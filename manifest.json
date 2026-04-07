@@ -4,8 +4,7 @@
   "version": "1.0.2",
   "description": "Filtra empleos en empleospublicos.cl basándose en palabras clave personalizadas y categorías profesionales",
   "permissions": [
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://www.empleospublicos.cl/*",
