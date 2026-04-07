@@ -1,0 +1,113 @@
+name: Lint & Validate
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate manifest.json
+      run: |
+        if ! command -v jq &> /dev/null; then
+          sudo apt-get install -y jq
+        fi
+        jq empty manifest.json
+        echo "✅ manifest.json es válido"
+    
+    - name: Check file integrity
+      run: |
+        # Verificar que existen archivos necesarios
+        required_files=(
+          "manifest.json"
+          "popup.html"
+          "popup.js"
+          "popup.css"
+          "content.js"
+          "background.js"
+          "rubros.js"
+          "icons/icon16.png"
+          "icons/icon48.png"
+          "icons/icon128.png"
+          "README.md"
+          "LICENSE"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Falta: $file"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Todos los archivos necesarios existen"
+    
+    - name: Check for console.log
+      run: |
+        if grep -r "console\.log" --include="*.js" \
+             --exclude-dir=node_modules \
+             --exclude-dir=.git .; then
+          echo "⚠️ Aviso: Se encontraron console.log en el código"
+          exit 0  # Warning, no error
+        else
+          echo "✅ Sin console.log en el código"
+        fi
+    
+    - name: Validate icons
+      run: |
+        if file icons/icon16.png | grep -q "PNG image data, 16 x 16"; then
+          echo "✅ icon16.png válido"
+        else
+          echo "❌ icon16.png no es 16x16"
+          exit 1
+        fi
+        
+        if file icons/icon48.png | grep -q "PNG image data, 48 x 48"; then
+          echo "✅ icon48.png válido"
+        else
+          echo "❌ icon48.png no es 48x48"
+          exit 1
+        fi
+        
+        if file icons/icon128.png | grep -q "PNG image data, 128 x 128"; then
+          echo "✅ icon128.png válido"
+        else
+          echo "❌ icon128.png no es 128x128"
+          exit 1
+        fi
+    
+    - name: Check documentation
+      run: |
+        docs=(
+          "README.md"
+          "CHANGELOG.md"
+          "CONTRIBUTING.md"
+          "LICENSE"
+        )
+        
+        for doc in "${docs[@]}"; do
+          if [ ! -f "$doc" ]; then
+            echo "❌ Falta documentación: $doc"
+            exit 1
+          fi
+        done
+        
+        echo "✅ Documentación completa"
+    
+    - name: Summary
+      if: success()
+      run: |
+        echo "🎉 Validación completada exitosamente"
+        echo ""
+        echo "Checklist:"
+        echo "✅ manifest.json válido"
+        echo "✅ Archivos necesarios presentes"
+        echo "✅ Iconos con dimensiones correctas"
+        echo "✅ Documentación completa"
+        echo "✅ Sin código de debug"

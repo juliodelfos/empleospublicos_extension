@@ -1,0 +1,68 @@
+# Archivos del Sistema
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+
+# IDEs
+.vscode/
+.idea/
+.sublime-project
+.sublime-workspace
+*.sublime-project
+*.sublime-workspace
+.netrwhist
+
+# Node (por si se agrega en el futuro)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv
+env/
+venv/
+
+# Logs
+*.log
+*.logs
+npm-debug.log*
+
+# Compilados
+dist/
+build/
+.cache/
+
+# Archivos Temporales
+temp/
+tmp/
+*.tmp
+.temp/
+
+# Archivos de Prueba/Desarrollo
+*.test.js
+coverage/
+.nyc_output/
+
+# Empaquetados (ZIP, no commitear)
+*.zip
+*.tar.gz
+*.rar
+
+# Archivos Locales de Configuración
+.env
+.env.local
+.env.*.local
+
+# Screenshots de Desarrollo
+screenshot-*.png
+screenshot-*.jpg
+*.screenshot

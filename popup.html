@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Filtrar ofertas empleospublicos.cl</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Filtrar ofertas empleospublicos.cl</h1>
+    
+    <!-- Tabs para cambiar entre "Palabras Clave" y "Rubros" -->
+    <div class="tabs-container">
+      <button class="tab-btn active" data-tab="keywords">📝 Palabras Clave</button>
+      <button class="tab-btn" data-tab="rubros">🏷️ Rubros</button>
+    </div>
+
+    <!-- TAB 1: Palabras Clave a Excluir -->
+    <div id="keywords-tab" class="tab-content active">
+      <div class="filter-section">
+        <h2>Palabras clave a excluir</h2>
+        
+        <div class="input-group">
+          <input 
+            type="text" 
+            id="filterInput" 
+            placeholder="Ej: médico, kinesiólogo, abogado..."
+            autocomplete="off"
+          >
+          <button id="addBtn">Agregar</button>
+        </div>
+        
+        <div id="filterList" class="filter-list">
+          <!-- Los filtros van aquí -->
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Rubros a Excluir -->
+    <div id="rubros-tab" class="tab-content">
+      <div class="filter-section">
+        <h2>Rubros a excluir</h2>
+        <p class="rubros-hint">Selecciona categorías completas para excluir. Ejemplo: "Carreras de Salud" excluye: médico, enfermera, dentista, etc.</p>
+        
+        <div id="rubrosList" class="rubros-list">
+          <!-- Los rubros se generan aquí dinámicamente -->
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-section">
+      <p id="filterStats">Cargando estadísticas...</p>
+    </div>
+
+    <div class="info-section">
+      <small>💡 Los filtros se guardan automáticamente y se aplican en empleospublicos.cl</small>
+    </div>
+
+    <div class="disclaimer">
+      No es una extensión oficial de empleospublicos.cl
+    </div>
+  </div>
+
+  <script src="rubros.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
