@@ -39,9 +39,8 @@ function shouldRunOnThisPage() {
 // Verificar si debemos ejecutar en esta página
 if (!shouldRunOnThisPage()) {
   console.log('[Filtro Empleos] Deshabilitado para esta página');
-  // No ejecutar nada más
-  throw new Error('Extension disabled for this page');
-}
+  // No ejecutar nada más - simplemente terminar aquí
+} else {
 
 let blockedCount = 0;
 let filters = [];
@@ -265,3 +264,5 @@ observer.observe(document.body, {
 });
 
 console.log('[Filtro Empleos] Content script cargado');
+
+} // Fin del else - cierre del guard clause
