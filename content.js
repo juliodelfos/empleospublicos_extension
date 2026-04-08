@@ -1,39 +1,26 @@
 // Script que se ejecuta en empleospublicos.cl y filtra empleos
 
-// Guard: Solo ejecutar en la página de búsqueda de empleos
-// NO ejecutar en sitio privado, dashboard, u otras páginas
+// Guard: Solo ejecutar en empleospublicos.cl excepto sitio privado
+// NO ejecutar en sitio privado o dashboard
 function shouldRunOnThisPage() {
-  const url = window.location.href;
   const pathname = window.location.pathname;
   
-  // NO ejecutar en estas páginas:
-  const blockedPages = [
-    '/pub/usuarios/usrPostulanteDashboard.aspx',  // Sitio privado/dashboard
-    '/pub/usuarios/',                              // Cualquier página de usuario
-    '/login',                                      // Login
-    '/logout',                                     // Logout
-  ];
-  
-  for (const page of blockedPages) {
-    if (pathname.includes(page)) {
-      console.log('[Filtro Empleos] Página excluida, no filtrando');
-      return false;
-    }
+  // BLOQUEAR: Sitio privado del usuario
+  if (pathname.includes('/pub/usuarios/')) {
+    console.log('[Filtro Empleos] Bloqueado: Página de usuario');
+    return false;
   }
   
-  // SÍ ejecutar si estamos en la página de búsqueda
-  // Patrón: /pub/convocatorias/ o /convocatorias/
-  if (pathname.includes('/pub/convocatorias/') || pathname.includes('/convocatorias/')) {
-    return true;
+  // BLOQUEAR: Login/Logout
+  if (pathname.includes('/login') || pathname.includes('/logout')) {
+    console.log('[Filtro Empleos] Bloqueado: Página de autenticación');
+    return false;
   }
   
-  // SÍ ejecutar si la página contiene elementos de trabajo (.items)
-  if (document.querySelector('.items')) {
-    return true;
-  }
-  
-  console.log('[Filtro Empleos] No es página de búsqueda de empleos');
-  return false;
+  // PERMITIR: Todo lo demás en empleospublicos.cl
+  // La extensión se inyecta en empleospublicos.cl y aquí decidimos si filtrar
+  console.log('[Filtro Empleos] Página permitida para filtrado');
+  return true;
 }
 
 // Verificar si debemos ejecutar en esta página
