@@ -52,6 +52,11 @@ const RUBROS = {
       'fisiatra',
       'logopaeda',
       'logopeda',
+      'tens',
+      'técnico en enfermería',
+      'tecnico en enfermeria',
+      'técnico en nutrición',
+      'tecnico en nutricion',
     ]
   },
   
