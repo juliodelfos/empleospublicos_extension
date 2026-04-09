@@ -17,108 +17,50 @@ Plan de desarrollo futuro y próximas mejoras para la extensión.
 
 ---
 
-### 📅 v1.1 (Próximo - Q2 2026)
+### 📅 v1.1 (Próximo)
 
 #### **Interfaz y Experiencia**
-- [ ] **Tema oscuro** (`prefers-color-scheme: dark`)
-- [ ] **Animaciones mejoradas** (transiciones más suaves)
-- [ ] **Tooltips informativos** (al pasar mouse sobre elementos)
-- [ ] **Modal de "¿Primera vez?"** con tutorial interactivo
+- [ ] **Tema oscuro** 
+- [ ] **Animaciones mejoradas**
+- [ ] **Modal de "¿Primera vez?"** con tutorial
 
 #### **Filtrado Avanzado**
-- [ ] **Filtrado por ubicación** (región, provincia, comuna)
-  - Extraer ubicación del listado de empleospublicos.cl
-  - Crear selector de regiones de Chile
-- [ ] **Filtrado por rango de sueldo** (mínimo, máximo)
-- [ ] **Filtrado por tipo de contrato** (indefinido, plazo fijo, etc.)
-- [ ] **Historial de búsquedas** (búsquedas recientes)
+- [ ] **Filtrado por ubicación** (región)
+- [ ] **Filtrado por rango de sueldo**
+- [ ] **Historial de búsquedas recientes**
 
 #### **Gestión de Filtros**
 - [ ] **Guardar conjuntos de filtros** (presets)
-  - Ej: "Búsqueda Médica", "Búsqueda Administrativa"
-  - Cambiar entre presets con 1 clic
-- [ ] **Exportar configuración** (JSON)
-- [ ] **Importar configuración** (desde archivo)
+- [ ] **Exportar/importar configuración**
 
 #### **Estadísticas**
 - [ ] **Contador mejorado** (ofertas ocultadas vs mostradas)
-- [ ] **Gráfico de tendencias** (últimos 7 días)
-- [ ] **Categorías más buscadas** (chart simple)
-
-#### **Internacionalización**
-- [ ] **Soporte para múltiples idiomas**
-  - Español (actual)
-  - Inglés
-  - Portugués
-- [ ] Selector de idioma en popup
+- [ ] **Gráfico simple de tendencias**
 
 ---
 
-### 🔮 v2.0 (Mediano Plazo - Q4 2026)
+### 🔮 v2.0 (Mediano Plazo)
 
-#### **Sincronización en la Nube**
-- [ ] **Google Cloud Storage** para sincronización entre dispositivos
-  - Backup automático de configuración
-  - Restaurar en otro navegador/dispositivo
-- [ ] **Autenticación con Google** (opcional)
-- [ ] **Control de privacidad** (qué datos sincronizar)
-
-#### **Filtrado Avanzado con Regex**
+#### **Filtrado Avanzado**
 - [ ] **Expresiones regulares** para filtros complejos
-  - Ej: `/médico|doctor|galeno/i`
-- [ ] **Constructor visual de regex** (ayuda)
-- [ ] **Validación y previsualizaciones**
+- [ ] **Validador de regex visual**
 
-#### **Integración con API**
-- [ ] **Webhook para notificaciones** (si hay nueva oferta que coincide)
-  - Integración con Slack, Discord, Telegram (futura)
-- [ ] **REST API** para automatización
-- [ ] **IFTTT support** (If This Then That)
-
-#### **Historial y Análisis**
-- [ ] **Historial de ofertas vistas/ocultadas**
-  - Almacenar en local storage o cloud
-  - Capacidad de recuperar ofertas
-- [ ] **Análisis de tendencias**
-  - Rubros más solicitados
-  - Tendencias salariales
-  - Instituciones que más ofrecen
+#### **Historial**
+- [ ] **Historial de ofertas vistas**
+- [ ] **Capacidad de recuperar ofertas**
 
 #### **Notificaciones**
-- [ ] **Notificaciones de Chrome** cuando nuevas ofertas coinciden
-- [ ] **Notificaciones de email** (opt-in)
-- [ ] **Frecuencia configurable** (cada hora, diaria, semanal)
+- [ ] **Notificaciones de Chrome** cuando hay nuevas ofertas que coinciden
 
 ---
 
-### 🚀 v3.0 (Largo Plazo - 2027+)
-
-#### **Inteligencia Artificial**
-- [ ] **Recomendaciones basadas en IA**
-  - Aprender de tus búsquedas
-  - Sugerir filtros automáticamente
-- [ ] **Análisis de CV y matching**
-  - Cargar CV del usuario
-  - Mostrar compatibilidad (%)
-- [ ] **Optimización de búsqueda** con ML
+### 🚀 v3.0+ (Largo Plazo - Si hay demanda)
 
 #### **Comunidad**
 - [ ] **Compartir presets** con otros usuarios
-  - Presets públicos en galería
-  - Votos y comentarios
-- [ ] **Ranking de empleadores** (basado en opiniones)
-- [ ] **Comentarios sobre empresas** (employer reviews)
 
-#### **Plataforma Multiplataforma**
+#### **Otras plataformas**
 - [ ] **Extensión para Firefox**
-- [ ] **Extensión para Safari** (si es viable)
-- [ ] **Versión web** (webapp independiente)
-- [ ] **App móvil** (React Native)
-
-#### **Integraciones Avanzadas**
-- [ ] **Integración con LinkedIn**
-- [ ] **Exportar a Google Calendar** (fechas de cierre)
-- [ ] **Integración con Indeed, Linkedin, etc.** (agregador)
 
 ---
 
@@ -131,16 +73,14 @@ Plan de desarrollo futuro y próximas mejoras para la extensión.
 4. Bug fixes si los hay
 
 ### Mediano Plazo (1-3 meses)
-1. Tema oscuro (UI rápida, alto impacto)
+1. Tema oscuro
 2. Filtrado por ubicación
 3. Exportar/importar configuración
-4. Multi-idioma (al menos Inglés)
 
 ### Largo Plazo (6+ meses)
-1. Sincronización en la nube
-2. Historial y análisis
-3. Notificaciones
-4. Integraciones comunitarias
+1. Historial de ofertas
+2. Notificaciones
+3. Expresiones regulares
 
 ---
 
