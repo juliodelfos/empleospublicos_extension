@@ -30,6 +30,7 @@ const RUBROS = {
       'neurologo',
       'anestesiólogo',
       'anestesiolog',
+      'anestesista',
       'oftalmólogo',
       'oftalmolog',
       'ginecólogo',
@@ -55,6 +56,8 @@ const RUBROS = {
       'tens',
       'técnico en enfermería',
       'tecnico en enfermeria',
+      'auxiliar de enfermería',
+      'auxiliar de enfermeria',
       'técnico en nutrición',
       'tecnico en nutricion',
     ]

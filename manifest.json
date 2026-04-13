@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Filtrar ofertas empleospublicos.cl",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Filtra empleos en empleospublicos.cl basándose en palabras clave personalizadas y categorías profesionales",
   "permissions": [
     "storage"
