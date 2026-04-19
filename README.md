@@ -15,15 +15,15 @@ Una extensión de Chrome que filtra empleos en [empleospublicos.cl](https://www.
 - 11 categorías profesionales precuradas:
   - 🏥 Salud
   - 📚 Educación
-  - ⚖️ Derecho
-  - 💼 Administración
-  - 🏭 Ingeniería
-  - 🎓 Ciencias
-  - 🎨 Artes y Diseño
-  - 📊 Finanzas
-  - 🌍 Negocios Internacionales
-  - 🏗️ Construcción
-  - 🚗 Transporte y Logística
+  - 📋 Administración
+  - 💰 Finanzas y Contabilidad
+  - 🏗️ Construcción y Obras
+  - 🚚 Logística y Transporte
+  - 💻 Tecnología e Informática
+  - 👥 Recursos Humanos
+  - 📊 Ventas y Marketing
+  - ⚖️ Derecho y Legal
+  - 🔒 Seguridad y Vigilancia
 
 ✅ **Interfaz moderna**
 - Diseño limpio y minimalista (inspirado en shadcn)
@@ -69,10 +69,13 @@ Haz clic en el icono azul **"EP"** en la barra de herramientas
 ### 4. O filtra por categorías
 - **Tab "Rubros"**
 - Selecciona una o más categorías (ej: `Salud`, `Derecho`)
-- Solo se mostrarán ofertas relacionadas con esas profesiones
+- Las ofertas que coincidan con esos rubros se ocultarán automáticamente
 
 ### 5. Combina ambos filtros
-Puedes usar **palabras clave Y rubros** simultáneamente
+Puedes usar **palabras clave y rubros** simultáneamente. Si una oferta coincide con cualquier palabra clave o rubro seleccionado, se oculta.
+
+### Nota sobre páginas de detalle
+El filtrado se aplica sobre listados de ofertas. Las páginas de detalle/postulación de una convocatoria no se filtran para evitar bloquear contenido que el usuario abrió explícitamente.
 
 ## 🔍 Ejemplos
 
@@ -81,10 +84,9 @@ Puedes usar **palabras clave Y rubros** simultáneamente
 Palabras clave: "administración", "contador"
 ```
 
-**Eres médico, no buscas enfermería:**
+**No quieres ver ofertas de salud:**
 ```
-Palabras clave: "enfermería"
-Rubros: Excluir "Salud" (luego seleccionar otros)
+Rubros: Salud
 ```
 
 **Buscas solo trabajos en región Metropolitana:**
@@ -128,9 +130,20 @@ El código es simple, mantenible, y se enfoca en resolver el problema sin comple
 
 ### Permisos Solicitados
 - `storage` — Guardar filtros localmente
-- `scripting` — Inyectar código para filtrado
-- `https://www.empleospublicos.cl/*` — Acceder al sitio
+- `https://www.empleospublicos.cl/*` — Ejecutar el filtro en el sitio
 - `https://empleospublicos.cl/*` — Variante sin www
+
+## 📦 Release / Chrome Web Store
+
+El paquete listo para subir a Chrome Web Store se genera como ZIP con los archivos runtime de la extensión.
+
+Versión actual:
+
+```txt
+empleospublicos_extension_v1.0.5.zip
+```
+
+También puede existir una copia en `dist/` para mantener ordenados los paquetes de release. Antes de subir una actualización, verifica que `manifest.json` tenga una versión mayor que la ya publicada.
 
 ## 📊 Privacidad
 
@@ -157,12 +170,13 @@ El código es simple, mantenible, y se enfoca en resolver el problema sin comple
 
 ## 🔄 Versiones
 
-### v1.0.1 (Actual)
+### v1.0.5 (Actual)
 - ✅ Filtrado por palabras clave
 - ✅ Filtrado por 11 categorías (rubros)
 - ✅ Interfaz moderna con dos tabs
 - ✅ Búsqueda insensible a acentos
 - ✅ Almacenamiento local de filtros
+- ✅ Protección para no filtrar páginas de detalle/postulación
 - ✅ Disclaimer de no-oficial
 - ✅ Ícono azul con iniciales "EP"
 

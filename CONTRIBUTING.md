@@ -45,7 +45,7 @@ Qué está pasando
 **Información**
 - Chrome version: 125.0.0.0
 - Sistema operativo: macOS Sonoma
-- Versión de la extensión: 1.0.1
+- Versión de la extensión: 1.0.5
 
 **Screenshots**
 [Si aplica, adjunta capturas]
@@ -190,17 +190,20 @@ rubros.js  → Datos estáticos
    - Bugfixes = patch
 
 2. **Checklist de release**
-   - [ ] Actualizar `manifest.json` version
-   - [ ] Actualizar `CHANGELOG.md` (próximamente)
-   - [ ] Crear tag en GitHub
-   - [ ] Subir ZIP a Chrome Web Store
-   - [ ] Crear Release en GitHub
+   - [ ] Actualizar `manifest.json` version.
+   - [ ] Actualizar `CHANGELOG.md`.
+   - [ ] Actualizar `README.md` si cambia el comportamiento público.
+   - [ ] Validar sintaxis con `node --check` en los archivos JS principales.
+   - [ ] Generar ZIP con el número de versión correcto.
+   - [ ] Verificar el `manifest.json` dentro del ZIP.
+   - [ ] Crear tag en GitHub.
+   - [ ] Subir ZIP a Chrome Web Store.
+   - [ ] Crear Release en GitHub.
 
 ## ❓ Preguntas
 
-- **Issues**: Para bugs, features, preguntas técnicas
-- **Discussions**: Para debates generales (próximamente)
-- **Email**: yerson@example.com (reemplaza con tu email)
+- **Issues**: Para bugs, features y preguntas técnicas.
+- **Discussions**: Para debates generales si se habilitan en GitHub.
 
 ## 📚 Recursos
 

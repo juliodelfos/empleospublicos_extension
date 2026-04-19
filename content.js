@@ -4,15 +4,24 @@
 // NO ejecutar en sitio privado o dashboard
 function shouldRunOnThisPage() {
   const pathname = window.location.pathname;
+  const normalizedPathname = pathname.toLowerCase();
+
+  // BLOQUEAR: Páginas de detalle/postulación de una convocatoria.
+  // Si hay filtros activos, el fallback por contenido puede confundir el detalle
+  // completo con una "tarjeta" de trabajo y ocultar la página completa.
+  if (normalizedPathname.includes('/pub/convocatorias/convpostularavisotrabajo.aspx')) {
+    console.log('[Filtro Empleos] Bloqueado: Página de detalle de convocatoria');
+    return false;
+  }
   
   // BLOQUEAR: Sitio privado del usuario
-  if (pathname.includes('/pub/usuarios/')) {
+  if (normalizedPathname.includes('/pub/usuarios/')) {
     console.log('[Filtro Empleos] Bloqueado: Página de usuario');
     return false;
   }
   
   // BLOQUEAR: Login/Logout
-  if (pathname.includes('/login') || pathname.includes('/logout')) {
+  if (normalizedPathname.includes('/login') || normalizedPathname.includes('/logout')) {
     console.log('[Filtro Empleos] Bloqueado: Página de autenticación');
     return false;
   }
@@ -26,6 +35,7 @@ function shouldRunOnThisPage() {
 // Verificar si debemos ejecutar en esta página
 if (!shouldRunOnThisPage()) {
   console.log('[Filtro Empleos] Deshabilitado para esta página');
+  chrome.storage.local.set({ blockedCount: 0 });
   // No ejecutar nada más - simplemente terminar aquí
 } else {
 
@@ -64,6 +74,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function filterJobs() {
   blockedCount = 0;
+
+  // Revalidar por si el sitio cambia de URL/contenido sin recargar completamente.
+  // Esto evita que la vista de detalle sea ocultada al navegar desde un listado.
+  if (!shouldRunOnThisPage()) {
+    resetJobs();
+    updateBlockedCount();
+    return;
+  }
 
   // Intentar encontrar los trabajos en la página
   // empleospublicos.cl usa diferentes estructuras según la página

@@ -5,6 +5,22 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/).
 
+## [1.0.5] - 2026-04-18
+
+### Fixed
+- Se corrigió un problema donde, al tener filtros de rubro o palabras clave activos, algunas páginas de detalle/postulación podían quedar ocultas por el filtro.
+- Las páginas `/pub/convocatorias/convpostularavisoTrabajo.aspx` ahora quedan excluidas del filtrado para que siempre carguen cuando el usuario las abre.
+
+### Changed
+- Se reinicia el contador de ofertas filtradas (`blockedCount`) en páginas donde el filtro no debe ejecutarse.
+- Se revalida el tipo de página antes de cada re-filtrado para cubrir navegación dinámica del sitio.
+- Se actualizó la versión de la extensión a `1.0.5`.
+
+### Release
+- Paquete para Chrome Web Store: `empleospublicos_extension_v1.0.5.zip`.
+
+---
+
 ## [1.0.1] - 2026-04-07
 
 ### Added
