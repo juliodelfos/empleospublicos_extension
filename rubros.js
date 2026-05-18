@@ -10,11 +10,15 @@ const RUBROS = {
       'medico',
       'enfermera',
       'enfermero',
+      'enfermería',
+      'enfermeria',
       'kinésiologo',
       'kinesiologo',
       'dentista',
       'psicólogo',
       'psicologo',
+      'psiquiatra',
+      'siquiatra',
       'terapeuta',
       'farmacéutico',
       'farmaceutico',
@@ -60,6 +64,12 @@ const RUBROS = {
       'auxiliar de enfermeria',
       'técnico en nutrición',
       'tecnico en nutricion',
+      'rehabilitación',
+      'rehabilitacion',
+      'rehabilitador',
+      'técnico en rehabilitación',
+      'tecnico en rehabilitacion',
+      'some',
     ]
   },
   
@@ -126,6 +136,7 @@ const RUBROS = {
       'especialista en finanzas',
       'especialista en contabilidad',
       'ejecutivo de finanzas',
+      'presupuesto',
     ]
   },
   

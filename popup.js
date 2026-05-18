@@ -20,7 +20,11 @@ function normalizeText(text) {
 document.addEventListener('DOMContentLoaded', () => {
   loadFilters();
   loadRubros();
+  loadViewMode();
+  loadPauseState();
   setupTabs();
+  setupViewModeToggle();
+  setupPauseToggle();
 });
 
 function setupTabs() {
@@ -54,6 +58,7 @@ function loadFilters() {
     const blockedCount = result.blockedCount || 0;
 
     renderFilters(filters);
+    updateKeywordsBadge(filters.length);
     updateStats(blockedCount);
   });
 }
@@ -63,6 +68,7 @@ function renderFilters(filters) {
 
   if (filters.length === 0) {
     filterList.innerHTML = '<div class="empty-state">No hay filtros configurados</div>';
+    updateKeywordsBadge(0);
     return;
   }
 
@@ -81,6 +87,16 @@ function renderFilters(filters) {
 
     filterList.appendChild(tag);
   });
+
+  updateKeywordsBadge(filters.length);
+}
+
+function updateKeywordsBadge(count) {
+  const badge = document.getElementById('keywordsBadge');
+  if (badge) {
+    badge.textContent = count > 0 ? count.toString() : '';
+    badge.dataset.count = count;
+  }
 }
 
 function addFilter() {
@@ -105,6 +121,7 @@ function addFilter() {
     chrome.storage.local.set({ filters }, () => {
       filterInput.value = '';
       renderFilters(filters);
+      updateKeywordsBadge(filters.length);
 
       // Notificar al content script que hay cambios
       notifyContentScriptOfChanges();
@@ -119,6 +136,7 @@ function removeFilter(filter) {
 
     chrome.storage.local.set({ filters }, () => {
       renderFilters(filters);
+      updateKeywordsBadge(filters.length);
 
       // Notificar al content script que hay cambios
       notifyContentScriptOfChanges();
@@ -131,6 +149,62 @@ function loadRubros() {
   chrome.storage.local.get(['rubros'], (result) => {
     const selectedRubros = result.rubros || [];
     renderRubros(selectedRubros);
+    updateRubrosBadge(selectedRubros.length);
+  });
+}
+
+// ===== MODO DE VISTA =====
+function loadViewMode() {
+  chrome.storage.local.get(['viewMode'], (result) => {
+    const viewMode = result.viewMode || 'grid';
+    renderViewMode(viewMode);
+  });
+}
+
+function renderViewMode(viewMode) {
+  const radios = document.querySelectorAll('input[name="viewMode"]');
+  radios.forEach((radio) => {
+    radio.checked = radio.value === viewMode;
+  });
+}
+
+function updateViewMode(viewMode) {
+  chrome.storage.local.set({ viewMode }, () => {
+    notifyContentScriptOfChanges();
+  });
+}
+
+function setupViewModeToggle() {
+  const radios = document.querySelectorAll('input[name="viewMode"]');
+  radios.forEach((radio) => {
+    radio.addEventListener('change', () => {
+      updateViewMode(radio.value);
+    });
+  });
+}
+
+// ===== PAUSA =====
+function loadPauseState() {
+  chrome.storage.local.get(['paused'], (result) => {
+    const pauseToggle = document.getElementById('pauseToggle');
+    if (pauseToggle) {
+      pauseToggle.checked = result.paused || false;
+    }
+  });
+}
+
+function updatePauseState(paused) {
+  chrome.storage.local.set({ paused }, () => {
+    notifyContentScriptOfChanges();
+  });
+}
+
+function setupPauseToggle() {
+  const pauseToggle = document.getElementById('pauseToggle');
+  if (!pauseToggle) return;
+
+  pauseToggle.addEventListener('change', () => {
+    updatePauseState(pauseToggle.checked);
   });
 }
 
@@ -141,6 +215,7 @@ function renderRubros(selectedRubros) {
   
   if (rubros.length === 0) {
     rubrosList.innerHTML = '<div class="empty-state">No hay rubros disponibles</div>';
+    updateRubrosBadge(0);
     return;
   }
 
@@ -163,6 +238,16 @@ function renderRubros(selectedRubros) {
 
     rubrosList.appendChild(item);
   });
+
+  updateRubrosBadge(selectedRubros.length);
+}
+
+function updateRubrosBadge(count) {
+  const badge = document.getElementById('rubrosBadge');
+  if (badge) {
+    badge.textContent = count > 0 ? count.toString() : '';
+    badge.dataset.count = count;
+  }
 }
 
 function updateRubro(rubroId, checked) {
@@ -179,6 +264,7 @@ function updateRubro(rubroId, checked) {
 
     chrome.storage.local.set({ rubros }, () => {
       renderRubros(rubros);
+      updateRubrosBadge(rubros.length);
       notifyContentScriptOfChanges();
     });
   });
@@ -187,21 +273,28 @@ function updateRubro(rubroId, checked) {
 // ===== ESTADÍSTICAS =====
 function updateStats(blockedCount) {
   if (blockedCount === 0) {
-    filterStats.textContent = '✅ Sin trabajos filtrados en esta página';
+    filterStats.textContent = 'Sin trabajos filtrados en esta página';
   } else if (blockedCount === 1) {
-    filterStats.textContent = `🔍 1 trabajo filtrado`;
+    filterStats.textContent = `1 trabajo filtrado`;
   } else {
-    filterStats.textContent = `🔍 ${blockedCount} trabajos filtrados`;
+    filterStats.textContent = `${blockedCount} trabajos filtrados`;
   }
 }
 
-// Actualizar estadísticas cada 500ms
-setInterval(() => {
-  chrome.storage.local.get(['blockedCount'], (result) => {
-    const blockedCount = result.blockedCount || 0;
-    updateStats(blockedCount);
-  });
-}, 500);
+// Escuchar cambios en storage para actualizar estadísticas en tiempo real
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local') {
+    if (changes.blockedCount) {
+      updateStats(changes.blockedCount.newValue || 0);
+    }
+    if (changes.filters) {
+      updateKeywordsBadge((changes.filters.newValue || []).length);
+    }
+    if (changes.rubros) {
+      updateRubrosBadge((changes.rubros.newValue || []).length);
+    }
+  }
+});
 
 // ===== NOTIFICACIÓN AL CONTENT SCRIPT =====
 function notifyContentScriptOfChanges() {

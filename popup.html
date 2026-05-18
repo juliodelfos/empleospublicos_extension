@@ -12,8 +12,14 @@
     
     <!-- Tabs para cambiar entre "Palabras Clave" y "Rubros" -->
     <div class="tabs-container">
-      <button class="tab-btn active" data-tab="keywords">📝 Palabras Clave</button>
-      <button class="tab-btn" data-tab="rubros">🏷️ Rubros</button>
+      <button class="tab-btn active" data-tab="keywords">
+        <span>Palabras Clave</span>
+        <span class="tab-badge" id="keywordsBadge">0</span>
+      </button>
+      <button class="tab-btn" data-tab="rubros">
+        <span>Rubros</span>
+        <span class="tab-badge" id="rubrosBadge">0</span>
+      </button>
     </div>
 
     <!-- TAB 1: Palabras Clave a Excluir -->
@@ -30,6 +36,7 @@
           >
           <button id="addBtn">Agregar</button>
         </div>
+        <small class="filter-hint">El filtrado no distingue mayúsculas ni acentos</small>
         
         <div id="filterList" class="filter-list">
           <!-- Los filtros van aquí -->
@@ -47,6 +54,36 @@
           <!-- Los rubros se generan aquí dinámicamente -->
         </div>
       </div>
+    </div>
+
+    <div class="view-mode-section">
+      <h2>Vista por defecto</h2>
+      <div class="view-mode-toggle">
+        <label class="view-option">
+          <input type="radio" name="viewMode" value="grid">
+          <span class="view-label">
+            <span class="view-icon">⊞</span>
+            Grilla
+          </span>
+        </label>
+        <label class="view-option">
+          <input type="radio" name="viewMode" value="list">
+          <span class="view-label">
+            <span class="view-icon">☰</span>
+            Lista
+          </span>
+        </label>
+      </div>
+      <small class="view-hint">Define cómo se muestran las ofertas en el sitio</small>
+    </div>
+
+    <div class="pause-section">
+      <label class="pause-toggle">
+        <input type="checkbox" id="pauseToggle">
+        <span class="pause-slider"></span>
+        <span class="pause-label">Pausar filtrado</span>
+      </label>
+      <small class="pause-hint">Muestra todas las ofertas sin filtrar</small>
     </div>
 
     <div class="stats-section">
