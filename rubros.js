@@ -69,6 +69,8 @@ const RUBROS = {
       'rehabilitador',
       'técnico en rehabilitación',
       'tecnico en rehabilitacion',
+      'pabellón',
+      'pabellon',
       'some',
     ]
   },

@@ -140,7 +140,7 @@ El paquete listo para subir a Chrome Web Store se genera como ZIP con los archiv
 Versión actual:
 
 ```txt
-empleospublicos_extension_v1.0.5.zip
+empleospublicos_extension_v1.2.1.zip
 ```
 
 También puede existir una copia en `dist/` para mantener ordenados los paquetes de release. Antes de subir una actualización, verifica que `manifest.json` tenga una versión mayor que la ya publicada.
@@ -170,13 +170,20 @@ También puede existir una copia en `dist/` para mantener ordenados los paquetes
 
 ## 🔄 Versiones
 
-### v1.0.5 (Actual)
+### v1.2.1 (Actual)
+- ✅ Ocultado automático del bloque de cifras y métricas de la portada
+- ✅ Versión preparada para publicación en Chrome Web Store
+
+### v1.2.0
 - ✅ Filtrado por palabras clave
 - ✅ Filtrado por 11 categorías (rubros)
 - ✅ Interfaz moderna con dos tabs
 - ✅ Búsqueda insensible a acentos
 - ✅ Almacenamiento local de filtros
 - ✅ Protección para no filtrar páginas de detalle/postulación
+- ✅ Modo lista con navegación por teclado
+- ✅ Acciones en tarjetas para copiar link y crear evento de postulación en Google Calendar
+- ✅ Mejor compatibilidad con filtros nativos del sitio
 - ✅ Disclaimer de no-oficial
 - ✅ Ícono azul con iniciales "EP"
 

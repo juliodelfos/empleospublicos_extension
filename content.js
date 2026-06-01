@@ -66,6 +66,49 @@ function normalizeText(text) {
     .replace(/[\u0300-\u036f]/g, '');   // Remover marcas diacríticas
 }
 
+const statsSectionSelector = '#gestionEmpleos';
+let statsSectionObserver = null;
+
+function hideEmpleosStatsSection() {
+  const statsBlock = document.querySelector(statsSectionSelector);
+  if (!statsBlock) return false;
+
+  const target = statsBlock.closest('section') || statsBlock;
+  if (target.dataset.epHiddenByExtension === 'true') return true;
+
+  target.dataset.epHiddenByExtension = 'true';
+  target.classList.add('ep-hidden-home-section');
+  target.setAttribute('aria-hidden', 'true');
+  target.style.setProperty('display', 'none', 'important');
+
+  log('Se ocultó la sección de métricas de empleos');
+  return true;
+}
+
+function setupStatsSectionHider() {
+  if (hideEmpleosStatsSection()) return;
+  if (statsSectionObserver) return;
+
+  statsSectionObserver = new MutationObserver(() => {
+    if (hideEmpleosStatsSection() && statsSectionObserver) {
+      statsSectionObserver.disconnect();
+      statsSectionObserver = null;
+    }
+  });
+
+  statsSectionObserver.observe(document.documentElement || document.body, {
+    childList: true,
+    subtree: true,
+  });
+
+  setTimeout(() => {
+    if (statsSectionObserver) {
+      statsSectionObserver.disconnect();
+      statsSectionObserver = null;
+    }
+  }, 10000);
+}
+
 // Cargar filtros, rubros y estado de pausa al iniciar
 chrome.storage.local.get(['filters', 'rubros', 'paused'], (result) => {
   filters = result.filters || [];
@@ -310,36 +353,163 @@ function getJobLink(element) {
   return link ? new URL(link.getAttribute('href'), window.location.href).href : window.location.href;
 }
 
+function getJobTitle(element) {
+  return element.querySelector('.top h3, h3')?.textContent?.trim() || 'Concurso Empleos Públicos';
+}
+
 function enhanceJobCards(jobElements = findJobElements()) {
   jobElements.forEach((element) => {
-    const socialBlock = element.querySelector('.card-footer .compartir-social');
-    if (!socialBlock || socialBlock.dataset.epCopyReady === 'true') return;
-
-    socialBlock.dataset.epCopyReady = 'true';
-    socialBlock.classList.add('ep-copy-link-wrapper');
-    socialBlock.innerHTML = '';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'ep-copy-link-button';
-    button.title = 'Copiar link del concurso';
-    button.setAttribute('aria-label', 'Copiar link del concurso');
-    button.innerHTML = `
-      <span class="ep-copy-link-icon" aria-hidden="true">⧉</span>
-      <span class="ep-copy-link-text">Copiar link</span>
-    `;
-
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const link = getJobLink(element);
-      const copied = await copyText(link);
-      showCopyFeedback(button, copied ? 'Copiado' : 'No se pudo copiar');
-    });
-
-    socialBlock.appendChild(button);
+    enhanceCalendarButton(element);
+    enhanceCopyLinkButton(element);
   });
+}
+
+function getActionGroup(element) {
+  const footer = element.querySelector('.card-footer');
+  if (!footer) return null;
+
+  let actionGroup = footer.querySelector('.ep-card-actions');
+  if (!actionGroup) {
+    actionGroup = document.createElement('div');
+    actionGroup.className = 'ep-card-actions';
+    footer.appendChild(actionGroup);
+  }
+
+  return actionGroup;
+}
+
+function iconSvg(name) {
+  const icons = {
+    calendar: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>',
+    calendarPlus: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path><path d="M12 14v4"></path><path d="M10 16h4"></path></svg>',
+    copy: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>',
+  };
+
+  return icons[name] || '';
+}
+
+function enhanceCalendarButton(element) {
+  const calendarButton = element.querySelector('.card-footer .cronograma');
+  if (!calendarButton || calendarButton.dataset.epCalendarReady === 'true') return;
+
+  const actionGroup = getActionGroup(element);
+  if (!actionGroup) return;
+
+  calendarButton.dataset.epCalendarReady = 'true';
+  calendarButton.classList.add('ep-action-button', 'ep-calendarization-button');
+  calendarButton.title = 'Ver calendarización';
+  calendarButton.setAttribute('aria-label', 'Ver calendarización');
+  calendarButton.innerHTML = `${iconSvg('calendar')}<span>Calendarización</span>`;
+
+  const googleButton = document.createElement('button');
+  googleButton.type = 'button';
+  googleButton.className = 'ep-action-button ep-google-calendar-button';
+  googleButton.title = 'Añadir fecha postulación a Google Calendar';
+  googleButton.setAttribute('aria-label', 'Añadir fecha postulación a Google Calendar');
+  googleButton.innerHTML = `${iconSvg('calendarPlus')}<span>Añadir fecha postulación a Google Calendar</span>`;
+
+  googleButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const calendarUrl = buildGoogleCalendarUrl(element);
+    if (!calendarUrl) {
+      showCalendarFeedback(googleButton, 'No se encontró fecha');
+      return;
+    }
+
+    window.open(calendarUrl, '_blank', 'noopener');
+  });
+
+  actionGroup.appendChild(calendarButton);
+  actionGroup.appendChild(googleButton);
+}
+
+function enhanceCopyLinkButton(element) {
+  const socialBlock = element.querySelector('.card-footer .compartir-social');
+  if (!socialBlock || socialBlock.dataset.epCopyReady === 'true') return;
+
+  const actionGroup = getActionGroup(element);
+  if (!actionGroup) return;
+
+  socialBlock.dataset.epCopyReady = 'true';
+  socialBlock.classList.add('ep-copy-link-wrapper');
+  socialBlock.innerHTML = '';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'ep-action-button ep-copy-link-button';
+  button.title = 'Copiar link del concurso';
+  button.setAttribute('aria-label', 'Copiar link del concurso');
+  button.innerHTML = `
+    ${iconSvg('copy')}
+    <span class="ep-copy-link-text">Copiar link</span>
+  `;
+
+  button.addEventListener('click', async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const link = getJobLink(element);
+    const copied = await copyText(link);
+    showCopyFeedback(button, copied ? 'Copiado' : 'No se pudo copiar');
+  });
+
+  socialBlock.appendChild(button);
+  actionGroup.appendChild(socialBlock);
+}
+
+function buildGoogleCalendarUrl(element) {
+  const deadlineDate = getApplicationDeadlineDate(element);
+  if (!deadlineDate) return '';
+
+  const nextDate = new Date(deadlineDate);
+  nextDate.setDate(deadlineDate.getDate() + 1);
+
+  const jobLink = getJobLink(element);
+  const details = [
+    'Fecha de postulación tope.',
+    '',
+    jobLink,
+    '',
+    'Creado con Filtrar ofertas empleospublicos.cl https://link.yaob.cl/empleos-publicos',
+  ].join('\n');
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `[Postulación] ${getJobTitle(element)}`,
+    dates: `${formatCalendarDate(deadlineDate)}/${formatCalendarDate(nextDate)}`,
+    details,
+  });
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function getApplicationDeadlineDate(element) {
+  const labelText = element.querySelector('.label-estado')?.textContent || '';
+  const match = labelText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!match) return null;
+
+  const [, day, month, year] = match;
+  return new Date(Number(year), Number(month) - 1, Number(day));
+}
+
+function formatCalendarDate(date) {
+  const year = date.getFullYear().toString();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}${month}${day}`;
+}
+
+function showCalendarFeedback(button, label) {
+  const originalHtml = button.innerHTML;
+  button.innerHTML = `<span>${label}</span>`;
+
+  clearTimeout(button.epCalendarFeedbackTimer);
+  button.epCalendarFeedbackTimer = setTimeout(() => {
+    button.innerHTML = originalHtml;
+  }, 1400);
 }
 
 async function copyText(text) {
@@ -490,6 +660,9 @@ function injectViewModeStyles() {
     .ep-filtered-hidden {
       display: none !important;
     }
+    .ep-hidden-home-section {
+      display: none !important;
+    }
     /* Responsive para pantallas pequeñas */
     @media (max-width: 768px) {
       #ep-view-toggle {
@@ -536,15 +709,26 @@ function injectViewModeStyles() {
       height: 100% !important;
       box-sizing: border-box !important;
     }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-wrapper {
-      display: block;
+    .todas-convocatorias .items .item .card-footer .ep-card-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+      width: 100%;
+      max-width: 380px;
+      margin-top: 8px;
     }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-button {
+    .todas-convocatorias .items .item .card-footer .ep-copy-link-wrapper {
+      display: contents;
+    }
+    .todas-convocatorias .items .item .card-footer .ep-action-button {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
       min-height: 36px;
-      padding: 6px 10px;
+      width: 100%;
+      padding: 7px 10px;
       border: 1px solid #dbeafe;
       border-radius: 6px;
       background: #eff6ff;
@@ -555,12 +739,12 @@ function injectViewModeStyles() {
       cursor: pointer;
       transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-button:hover {
+    .todas-convocatorias .items .item .card-footer .ep-action-button:hover {
       background: #dbeafe;
       border-color: #93c5fd;
       color: #063b67;
     }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-button:active {
+    .todas-convocatorias .items .item .card-footer .ep-action-button:active {
       transform: scale(0.98);
     }
     .todas-convocatorias .items .item .card-footer .ep-copy-link-button--copied {
@@ -568,10 +752,24 @@ function injectViewModeStyles() {
       border-color: #6ee7b7;
       color: #047857;
     }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-icon {
-      display: inline-block;
-      font-size: 17px;
-      line-height: 1;
+    .todas-convocatorias .items .item .card-footer .ep-action-icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+    .todas-convocatorias .items .item .card-footer .ep-google-calendar-button,
+    .todas-convocatorias .items .item .card-footer .ep-calendarization-button {
+      white-space: normal;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .todas-convocatorias .items .item .card-footer .ep-google-calendar-button {
+      grid-column: 1 / -1;
     }
 
     /* Modo lista: override del grid de Bootstrap */
@@ -670,18 +868,30 @@ function injectViewModeStyles() {
       margin: 0 !important;
       padding: 0 !important;
     }
+    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-card-actions {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      width: auto !important;
+      max-width: none !important;
+      margin-top: 0 !important;
+    }
     .todas-convocatorias.ep-list-mode .items .item .card-footer > div {
       display: contents !important;
     }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .cronograma {
+    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-action-button,
+    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-google-calendar-button {
       font-size: 12px !important;
       padding: 2px 8px !important;
       margin: 0 !important;
       display: inline-flex !important;
       align-items: center !important;
+      justify-content: center !important;
       gap: 4px !important;
+      width: auto !important;
     }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .cronograma::before {
+    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-calendarization-button::before,
+    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-google-calendar-button::before {
       content: "·" !important;
       margin: 0 6px 0 0 !important;
       color: #d1d5db !important;
@@ -885,6 +1095,8 @@ function clampSelectedListItem() {
 // Inicializar modo de vista
 function initViewMode() {
   injectViewModeStyles();
+  hideEmpleosStatsSection();
+  setupStatsSectionHider();
   // El botón y la aplicación del modo se manejan en initializeWhenReady()
   // para evitar duplicación con el observer
 }

@@ -5,6 +5,35 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-06-01
+
+### Fixed
+- Se ocultó automáticamente el bloque de cifras de la portada (`#gestionEmpleos`) para evitar que esa información se muestre en el sitio.
+
+### Release
+- Paquete para Chrome Web Store: `empleospublicos_extension_v1.2.1.zip`.
+
+## [1.2.0] - 2026-05-18
+
+### Added
+- Modo lista con navegación por teclado usando `J`, `K` y `Enter`.
+- Botón para copiar el link del concurso desde cada tarjeta.
+- Botón para crear en Google Calendar un evento de día completo para la fecha tope de postulación.
+- Nuevas palabras clave en rubros de Salud y Finanzas: `psiquiatra`, `siquiatra`, `pabellón`, `pabellon` y `presupuesto`.
+
+### Changed
+- Se reemplazaron los iconos sociales de las tarjetas por acciones útiles.
+- Se mantuvo el botón de Calendarización y se normalizó su estilo junto con las demás acciones.
+- Se mejoró la convivencia con filtros nativos del sitio, como región.
+
+### Fixed
+- El filtrado ya no debe afectar vistas de detalle/postulación de concursos.
+
+### Release
+- Paquete para Chrome Web Store: `empleospublicos_extension_v1.2.0.zip`.
+
+---
+
 ## [1.0.5] - 2026-04-18
 
 ### Fixed
