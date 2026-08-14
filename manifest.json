@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Filtrar ofertas empleospublicos.cl",
-  "version": "1.2.1",
+  "version": "1.4.0",
   "description": "Filtra empleos en empleospublicos.cl basándose en palabras clave personalizadas y categorías profesionales",
   "permissions": [
     "storage"
@@ -20,8 +20,23 @@
         "https://www.empleospublicos.cl/*",
         "https://empleospublicos.cl/*"
       ],
+      "css": [
+        "content.css"
+      ],
+      "js": [
+        "boot.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.empleospublicos.cl/*",
+        "https://empleospublicos.cl/*"
+      ],
       "js": [
         "rubros.js",
+        "filter-core.js",
+        "portal-adapter.js",
         "content.js"
       ],
       "run_at": "document_end"

@@ -4,30 +4,24 @@ Plan de desarrollo futuro y mejoras para la extensión.
 
 ## 📋 Versiones
 
-### ✅ v1.0.5 (Actual)
+### ✅ v1.4.0 (Actual)
 **Estado**: lista para enviar a Chrome Web Store.
 
 - ✅ Filtrado por palabras clave.
 - ✅ Filtrado por 11 categorías profesionales (rubros).
-- ✅ Interfaz moderna con dos tabs.
+- ✅ Conteos por pestaña y motivos de exclusión visibles.
+- ✅ Vista temporal de ofertas ocultas.
+- ✅ Modo lista con navegación por teclado.
+- ✅ Persistencia de región.
+- ✅ Motor de filtrado precompilado y procesamiento incremental.
+- ✅ Adaptador del portal actual con fallback legado limitado.
 - ✅ Búsqueda insensible a acentos.
 - ✅ Almacenamiento local de filtros.
 - ✅ Exclusión de páginas de detalle/postulación para evitar bloqueos accidentales.
-- ✅ Paquete de release `empleospublicos_extension_v1.0.5.zip`.
 
 ---
 
-### 📅 v1.1 (Próximo)
-
-#### Robustez del filtrado
-- [ ] Limitar el filtrado a rutas/listados conocidos.
-- [ ] Mejorar detección de tarjetas de oferta para depender menos del fallback por texto.
-- [ ] Agregar logs más claros solo en modo desarrollo.
-
-#### Interfaz y experiencia
-- [ ] Tema oscuro.
-- [ ] Mensajes de estado más claros en el popup.
-- [ ] Contador mejorado: ofertas ocultadas vs. visibles.
+### 📅 Próxima versión
 
 #### Gestión de filtros
 - [ ] Exportar/importar configuración.
@@ -59,8 +53,8 @@ Plan de desarrollo futuro y mejoras para la extensión.
 ## 🎯 Prioridades
 
 ### Corto plazo
-1. Publicar `v1.0.5` en Chrome Web Store.
-2. Confirmar que las páginas de detalle cargan con filtros activos.
+1. Publicar `v1.4.0` en Chrome Web Store.
+2. Confirmar periódicamente el contrato DOM del portal.
 3. Recopilar feedback de usuarios.
 4. Resolver bugs de compatibilidad si empleospublicos.cl cambia su estructura.
 
@@ -118,4 +112,4 @@ Plan de desarrollo futuro y mejoras para la extensión.
 
 ---
 
-**Última actualización**: 18 de abril de 2026
+**Última actualización**: 13 de agosto de 2026

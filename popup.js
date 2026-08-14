@@ -1,65 +1,80 @@
-// Popup.js - Interfaz del filtro de empleos
+// Interfaz de configuración de la extensión.
 
 const filterInput = document.getElementById('filterInput');
 const addBtn = document.getElementById('addBtn');
 const filterList = document.getElementById('filterList');
 const filterStats = document.getElementById('filterStats');
 const rubrosList = document.getElementById('rubrosList');
-const tabButtons = document.querySelectorAll('.tab-btn');
-const tabContents = document.querySelectorAll('.tab-content');
+const undoBtn = document.getElementById('undoBtn');
+const tabButtons = Array.from(document.querySelectorAll('[role="tab"]'));
+const tabContents = Array.from(document.querySelectorAll('[role="tabpanel"]'));
 
-// Normalizar texto: quitar acentos y convertir a minúsculas
+let undoState = null;
+
 function normalizeText(text) {
-  return text
+  return String(text || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
 
-// ===== TABS =====
 document.addEventListener('DOMContentLoaded', () => {
   loadFilters();
   loadRubros();
   loadViewMode();
   loadPauseState();
+  loadActiveTabState();
   setupTabs();
   setupViewModeToggle();
   setupPauseToggle();
+  setupUndo();
 });
 
 function setupTabs() {
-  tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const tabId = btn.dataset.tab;
-      
-      // Desactivar todos los tabs
-      tabButtons.forEach((b) => b.classList.remove('active'));
-      tabContents.forEach((c) => c.classList.remove('active'));
-      
-      // Activar el tab seleccionado
-      btn.classList.add('active');
-      document.getElementById(`${tabId}-tab`).classList.add('active');
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => activateTab(button.dataset.tab));
+    button.addEventListener('keydown', (event) => {
+      const currentIndex = tabButtons.indexOf(button);
+      let nextIndex = currentIndex;
+
+      if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabButtons.length;
+      else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+      else if (event.key === 'Home') nextIndex = 0;
+      else if (event.key === 'End') nextIndex = tabButtons.length - 1;
+      else return;
+
+      event.preventDefault();
+      activateTab(tabButtons[nextIndex].dataset.tab, true);
     });
   });
 }
 
-// ===== PALABRAS CLAVE =====
-addBtn.addEventListener('click', addFilter);
+function activateTab(tabId, focus = false) {
+  tabButtons.forEach((button) => {
+    const isActive = button.dataset.tab === tabId;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    button.tabIndex = isActive ? 0 : -1;
+    if (isActive && focus) button.focus();
+  });
 
-filterInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    addFilter();
-  }
+  tabContents.forEach((content) => {
+    const isActive = content.id === `${tabId}-tab`;
+    content.classList.toggle('active', isActive);
+    content.hidden = !isActive;
+  });
+}
+
+addBtn.addEventListener('click', addFilter);
+filterInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') addFilter();
 });
 
 function loadFilters() {
-  chrome.storage.local.get(['filters', 'blockedCount'], (result) => {
-    const filters = result.filters || [];
-    const blockedCount = result.blockedCount || 0;
-
+  chrome.storage.local.get(['filters'], (result) => {
+    const filters = Array.isArray(result.filters) ? result.filters : [];
     renderFilters(filters);
-    updateKeywordsBadge(filters.length);
-    updateStats(blockedCount);
   });
 }
 
@@ -77,14 +92,9 @@ function renderFilters(filters) {
     tag.className = 'filter-tag';
     tag.innerHTML = `
       <span class="label">${escapeHtml(filter)}</span>
-      <button class="remove-btn" title="Eliminar" data-filter="${escapeAttr(filter)}">
-        ✕
-      </button>
+      <button class="remove-btn" type="button" title="Eliminar ${escapeAttr(filter)}" aria-label="Eliminar ${escapeAttr(filter)}">✕</button>
     `;
-
-    const removeBtn = tag.querySelector('.remove-btn');
-    removeBtn.addEventListener('click', () => removeFilter(filter));
-
+    tag.querySelector('.remove-btn').addEventListener('click', () => removeFilter(filter));
     filterList.appendChild(tag);
   });
 
@@ -93,37 +103,32 @@ function renderFilters(filters) {
 
 function updateKeywordsBadge(count) {
   const badge = document.getElementById('keywordsBadge');
-  if (badge) {
-    badge.textContent = count > 0 ? count.toString() : '';
-    badge.dataset.count = count;
-  }
+  if (!badge) return;
+  badge.textContent = count > 0 ? String(count) : '';
+  badge.dataset.count = count;
 }
 
 function addFilter() {
   const value = filterInput.value.trim();
-
   if (!value) {
     filterInput.focus();
     return;
   }
 
   chrome.storage.local.get(['filters'], (result) => {
-    let filters = result.filters || [];
-
-    // Evitar duplicados usando normalización de acentos
+    const filters = Array.isArray(result.filters) ? result.filters : [];
     const normalizedValue = normalizeText(value);
-    if (filters.some((f) => normalizeText(f) === normalizedValue)) {
+
+    if (filters.some((filter) => normalizeText(filter) === normalizedValue)) {
       filterInput.value = '';
       return;
     }
 
-    filters.push(value);
-    chrome.storage.local.set({ filters }, () => {
+    setUndoState({ filters: [...filters] });
+    const nextFilters = [...filters, value];
+    chrome.storage.local.set({ filters: nextFilters }, () => {
       filterInput.value = '';
-      renderFilters(filters);
-      updateKeywordsBadge(filters.length);
-
-      // Notificar al content script que hay cambios
+      renderFilters(nextFilters);
       notifyContentScriptOfChanges();
     });
   });
@@ -131,88 +136,28 @@ function addFilter() {
 
 function removeFilter(filter) {
   chrome.storage.local.get(['filters'], (result) => {
-    let filters = result.filters || [];
-    filters = filters.filter((f) => f !== filter);
+    const filters = Array.isArray(result.filters) ? result.filters : [];
+    setUndoState({ filters: [...filters] });
+    const nextFilters = filters.filter((item) => item !== filter);
 
-    chrome.storage.local.set({ filters }, () => {
-      renderFilters(filters);
-      updateKeywordsBadge(filters.length);
-
-      // Notificar al content script que hay cambios
+    chrome.storage.local.set({ filters: nextFilters }, () => {
+      renderFilters(nextFilters);
       notifyContentScriptOfChanges();
     });
   });
 }
 
-// ===== RUBROS =====
 function loadRubros() {
   chrome.storage.local.get(['rubros'], (result) => {
-    const selectedRubros = result.rubros || [];
+    const selectedRubros = Array.isArray(result.rubros) ? result.rubros : [];
     renderRubros(selectedRubros);
-    updateRubrosBadge(selectedRubros.length);
-  });
-}
-
-// ===== MODO DE VISTA =====
-function loadViewMode() {
-  chrome.storage.local.get(['viewMode'], (result) => {
-    const viewMode = result.viewMode || 'grid';
-    renderViewMode(viewMode);
-  });
-}
-
-function renderViewMode(viewMode) {
-  const radios = document.querySelectorAll('input[name="viewMode"]');
-  radios.forEach((radio) => {
-    radio.checked = radio.value === viewMode;
-  });
-}
-
-function updateViewMode(viewMode) {
-  chrome.storage.local.set({ viewMode }, () => {
-    notifyContentScriptOfChanges();
-  });
-}
-
-function setupViewModeToggle() {
-  const radios = document.querySelectorAll('input[name="viewMode"]');
-  radios.forEach((radio) => {
-    radio.addEventListener('change', () => {
-      updateViewMode(radio.value);
-    });
-  });
-}
-
-// ===== PAUSA =====
-function loadPauseState() {
-  chrome.storage.local.get(['paused'], (result) => {
-    const pauseToggle = document.getElementById('pauseToggle');
-    if (pauseToggle) {
-      pauseToggle.checked = result.paused || false;
-    }
-  });
-}
-
-function updatePauseState(paused) {
-  chrome.storage.local.set({ paused }, () => {
-    notifyContentScriptOfChanges();
-  });
-}
-
-function setupPauseToggle() {
-  const pauseToggle = document.getElementById('pauseToggle');
-  if (!pauseToggle) return;
-
-  pauseToggle.addEventListener('change', () => {
-    updatePauseState(pauseToggle.checked);
   });
 }
 
 function renderRubros(selectedRubros) {
   rubrosList.innerHTML = '';
-
   const rubros = getRubros();
-  
+
   if (rubros.length === 0) {
     rubrosList.innerHTML = '<div class="empty-state">No hay rubros disponibles</div>';
     updateRubrosBadge(0);
@@ -222,20 +167,18 @@ function renderRubros(selectedRubros) {
   rubros.forEach((rubro) => {
     const item = document.createElement('div');
     item.className = 'rubro-item';
-    
     const isSelected = selectedRubros.includes(rubro.id);
-    
+
     item.innerHTML = `
-      <input type="checkbox" id="rubro-${rubro.id}" ${isSelected ? 'checked' : ''}>
-      <label for="rubro-${rubro.id}">
-        <span class="rubro-icon">${rubro.icon}</span>
-        ${rubro.label}
+      <input type="checkbox" id="rubro-${escapeAttr(rubro.id)}" ${isSelected ? 'checked' : ''}>
+      <label for="rubro-${escapeAttr(rubro.id)}">
+        <span class="rubro-icon" aria-hidden="true">${rubro.icon}</span>
+        ${escapeHtml(rubro.label)}
       </label>
     `;
 
-    const checkbox = item.querySelector('input[type="checkbox"]');
+    const checkbox = item.querySelector('input');
     checkbox.addEventListener('change', () => updateRubro(rubro.id, checkbox.checked));
-
     rubrosList.appendChild(item);
   });
 
@@ -244,79 +187,145 @@ function renderRubros(selectedRubros) {
 
 function updateRubrosBadge(count) {
   const badge = document.getElementById('rubrosBadge');
-  if (badge) {
-    badge.textContent = count > 0 ? count.toString() : '';
-    badge.dataset.count = count;
-  }
+  if (!badge) return;
+  badge.textContent = count > 0 ? String(count) : '';
+  badge.dataset.count = count;
 }
 
 function updateRubro(rubroId, checked) {
   chrome.storage.local.get(['rubros'], (result) => {
-    let rubros = result.rubros || [];
+    const rubros = Array.isArray(result.rubros) ? result.rubros : [];
+    setUndoState({ rubros: [...rubros] });
 
-    if (checked) {
-      if (!rubros.includes(rubroId)) {
-        rubros.push(rubroId);
-      }
-    } else {
-      rubros = rubros.filter((r) => r !== rubroId);
-    }
+    const nextRubros = checked
+      ? Array.from(new Set([...rubros, rubroId]))
+      : rubros.filter((item) => item !== rubroId);
 
-    chrome.storage.local.set({ rubros }, () => {
-      renderRubros(rubros);
-      updateRubrosBadge(rubros.length);
+    chrome.storage.local.set({ rubros: nextRubros }, () => {
+      renderRubros(nextRubros);
       notifyContentScriptOfChanges();
     });
   });
 }
 
-// ===== ESTADÍSTICAS =====
-function updateStats(blockedCount) {
-  if (blockedCount === 0) {
-    filterStats.textContent = 'Sin trabajos filtrados en esta página';
-  } else if (blockedCount === 1) {
-    filterStats.textContent = `1 trabajo filtrado`;
-  } else {
-    filterStats.textContent = `${blockedCount} trabajos filtrados`;
-  }
+function loadViewMode() {
+  chrome.storage.local.get(['viewMode'], (result) => {
+    renderViewMode(result.viewMode === 'list' ? 'list' : 'grid');
+  });
 }
 
-// Escuchar cambios en storage para actualizar estadísticas en tiempo real
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local') {
-    if (changes.blockedCount) {
-      updateStats(changes.blockedCount.newValue || 0);
-    }
-    if (changes.filters) {
-      updateKeywordsBadge((changes.filters.newValue || []).length);
-    }
-    if (changes.rubros) {
-      updateRubrosBadge((changes.rubros.newValue || []).length);
-    }
-  }
-});
+function renderViewMode(mode) {
+  document.querySelectorAll('input[name="viewMode"]').forEach((radio) => {
+    radio.checked = radio.value === mode;
+  });
+}
 
-// ===== NOTIFICACIÓN AL CONTENT SCRIPT =====
+function setupViewModeToggle() {
+  document.querySelectorAll('input[name="viewMode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      chrome.storage.local.set({ viewMode: radio.value }, notifyContentScriptOfChanges);
+    });
+  });
+}
+
+function loadPauseState() {
+  chrome.storage.local.get(['paused'], (result) => {
+    document.getElementById('pauseToggle').checked = Boolean(result.paused);
+  });
+}
+
+function setupPauseToggle() {
+  const pauseToggle = document.getElementById('pauseToggle');
+  pauseToggle.addEventListener('change', () => {
+    chrome.storage.local.set({ paused: pauseToggle.checked }, notifyContentScriptOfChanges);
+  });
+}
+
+function setupUndo() {
+  undoBtn.addEventListener('click', () => {
+    if (!undoState) return;
+    const previous = undoState;
+    undoState = null;
+    undoBtn.hidden = true;
+
+    chrome.storage.local.set(previous, () => {
+      if (previous.filters) renderFilters(previous.filters);
+      if (previous.rubros) renderRubros(previous.rubros);
+      notifyContentScriptOfChanges();
+      filterStats.textContent = 'Último cambio deshecho';
+    });
+  });
+}
+
+function setUndoState(previous) {
+  undoState = previous;
+  undoBtn.hidden = false;
+}
+
+function loadActiveTabState() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs[0];
+    if (!tab?.id) {
+      showUnavailableStats();
+      return;
+    }
+
+    chrome.tabs.sendMessage(tab.id, { action: 'getFilterState' }, (state) => {
+      if (chrome.runtime.lastError || !state) {
+        showUnavailableStats();
+        return;
+      }
+      updateStats(state);
+    });
+  });
+}
+
+function updateStats(state) {
+  if (state.paused) {
+    filterStats.textContent = `${state.total} ofertas · filtrado en pausa`;
+    return;
+  }
+  filterStats.textContent = `${state.total} ofertas · ${state.visible} visibles · ${state.hidden} ocultas`;
+}
+
+function showUnavailableStats() {
+  filterStats.textContent = 'Abre el listado de Empleos Públicos para ver estadísticas';
+}
+
 function notifyContentScriptOfChanges() {
-  // Notificar a todas las pestañas de empleospublicos.cl
   chrome.tabs.query({ url: '*://*.empleospublicos.cl/*' }, (tabs) => {
+    if (tabs.length === 0) {
+      showUnavailableStats();
+      return;
+    }
+
+    let pending = tabs.length;
     tabs.forEach((tab) => {
-      chrome.tabs.sendMessage(tab.id, { action: 'refilter' }).catch(() => {
-        // Ignorar errores si el script no está activo
+      chrome.tabs.sendMessage(tab.id, { action: 'refilter' }, (state) => {
+        void chrome.runtime.lastError;
+        pending -= 1;
+        if (tab.active && state) updateStats(state);
+        else if (pending === 0) loadActiveTabState();
       });
     });
   });
 }
 
-// ===== FUNCIONES AUXILIARES =====
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace !== 'local') return;
+  if (changes.filters) updateKeywordsBadge((changes.filters.newValue || []).length);
+  if (changes.rubros) updateRubrosBadge((changes.rubros.newValue || []).length);
+  if (changes.paused || changes.viewMode) window.setTimeout(loadActiveTabState, 100);
+});
+
 function escapeHtml(text) {
   const div = document.createElement('div');
-  div.textContent = text;
+  div.textContent = String(text || '');
   return div.innerHTML;
 }
 
 function escapeAttr(text) {
-  return text
+  return String(text || '')
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')

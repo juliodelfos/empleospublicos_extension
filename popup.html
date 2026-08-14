@@ -11,19 +11,19 @@
     <h1>Filtrar ofertas empleospublicos.cl</h1>
     
     <!-- Tabs para cambiar entre "Palabras Clave" y "Rubros" -->
-    <div class="tabs-container">
-      <button class="tab-btn active" data-tab="keywords">
+    <div class="tabs-container" role="tablist" aria-label="Tipos de filtro">
+      <button class="tab-btn active" id="keywords-tab-button" type="button" role="tab" aria-selected="true" aria-controls="keywords-tab" tabindex="0" data-tab="keywords">
         <span>Palabras Clave</span>
         <span class="tab-badge" id="keywordsBadge">0</span>
       </button>
-      <button class="tab-btn" data-tab="rubros">
+      <button class="tab-btn" id="rubros-tab-button" type="button" role="tab" aria-selected="false" aria-controls="rubros-tab" tabindex="-1" data-tab="rubros">
         <span>Rubros</span>
         <span class="tab-badge" id="rubrosBadge">0</span>
       </button>
     </div>
 
     <!-- TAB 1: Palabras Clave a Excluir -->
-    <div id="keywords-tab" class="tab-content active">
+    <div id="keywords-tab" class="tab-content active" role="tabpanel" aria-labelledby="keywords-tab-button">
       <div class="filter-section">
         <h2>Palabras clave a excluir</h2>
         
@@ -31,10 +31,11 @@
           <input 
             type="text" 
             id="filterInput" 
+            aria-label="Palabra clave a excluir"
             placeholder="Ej: médico, kinesiólogo, abogado..."
             autocomplete="off"
           >
-          <button id="addBtn">Agregar</button>
+          <button id="addBtn" type="button">Agregar</button>
         </div>
         <small class="filter-hint">El filtrado no distingue mayúsculas ni acentos</small>
         
@@ -45,7 +46,7 @@
     </div>
 
     <!-- TAB 2: Rubros a Excluir -->
-    <div id="rubros-tab" class="tab-content">
+    <div id="rubros-tab" class="tab-content" role="tabpanel" aria-labelledby="rubros-tab-button" hidden>
       <div class="filter-section">
         <h2>Rubros a excluir</h2>
         <p class="rubros-hint">Selecciona categorías completas para excluir. Ejemplo: "Carreras de Salud" excluye: médico, enfermera, dentista, etc.</p>
@@ -87,7 +88,8 @@
     </div>
 
     <div class="stats-section">
-      <p id="filterStats">Cargando estadísticas...</p>
+      <p id="filterStats" aria-live="polite">Cargando estadísticas...</p>
+      <button id="undoBtn" class="undo-button" type="button" hidden>Deshacer último cambio</button>
     </div>
 
     <div class="info-section">

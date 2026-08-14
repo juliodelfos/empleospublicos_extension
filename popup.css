@@ -104,6 +104,14 @@ h2 {
   background: #3b82f6;
 }
 
+.tab-btn:focus-visible,
+#addBtn:focus-visible,
+.remove-btn:focus-visible,
+.undo-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 /* TAB CONTENT */
 .tab-content {
   display: none;
@@ -331,10 +339,14 @@ h2 {
 .view-option {
   flex: 1;
   cursor: pointer;
+  position: relative;
 }
 
 .view-option input[type="radio"] {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
 
 .view-label {
@@ -364,6 +376,11 @@ h2 {
   color: #1d4ed8;
 }
 
+.view-option input[type="radio"]:focus-visible + .view-label {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .view-icon {
   font-size: 1.1em;
   line-height: 1;
@@ -390,10 +407,14 @@ h2 {
   gap: 10px;
   cursor: pointer;
   user-select: none;
+  position: relative;
 }
 
 .pause-toggle input[type="checkbox"] {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
 
 .pause-slider {
@@ -427,6 +448,11 @@ h2 {
   transform: translateX(18px);
 }
 
+.pause-toggle input[type="checkbox"]:focus-visible + .pause-slider {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .pause-label {
   font-size: 0.9em;
   font-weight: 500;
@@ -455,6 +481,22 @@ h2 {
   color: #1e40af;
   font-size: 0.9em;
   font-weight: 500;
+}
+
+.undo-button {
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.undo-button:hover {
+  background: #dbeafe;
 }
 
 .info-section {

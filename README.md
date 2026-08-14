@@ -29,6 +29,15 @@ Una extensión de Chrome que filtra empleos en [empleospublicos.cl](https://www.
 - Diseño limpio y minimalista (inspirado en shadcn)
 - Dos tabs: Palabras Clave y Rubros
 - Gestión simple de filtros
+- Conteo de ofertas visibles y ocultas por pestaña
+- Posibilidad de revelar temporalmente una oferta y conocer qué regla la ocultó
+- Opción para deshacer el último cambio en filtros o rubros
+
+✅ **Navegación mejorada**
+- Modos grilla y lista
+- Atajos `J`, `K` y `Enter` en modo lista
+- Acciones para copiar el enlace y añadir el cierre a Google Calendar
+- Persistencia de la última región seleccionada
 
 ✅ **100% privado**
 - Los filtros se guardan **localmente** en tu navegador
@@ -64,7 +73,7 @@ Haz clic en el icono azul **"EP"** en la barra de herramientas
 - **Tab "Palabras Clave"**
 - Escribe una palabra (ej: `médico`)
 - Haz clic en "Agregar"
-- Las ofertas que NO contengan esa palabra se ocultarán automáticamente
+- Las ofertas que contengan esa palabra se ocultarán automáticamente
 
 ### 4. O filtra por categorías
 - **Tab "Rubros"**
@@ -121,9 +130,14 @@ El código es simple, mantenible, y se enfoca en resolver el problema sin comple
 ├── popup.html            # Interfaz del popup
 ├── popup.js              # Lógica del popup
 ├── popup.css             # Estilos del popup
-├── content.js            # Script que filtra ofertas
+├── boot.js               # Arranque temprano para evitar parpadeos
+├── content.css           # Estilos integrados en el portal
+├── content.js            # Orquestación del filtrado y mejoras del listado
+├── filter-core.js        # Motor puro de normalización y reglas
+├── portal-adapter.js     # Contrato DOM del portal actual y fallback
 ├── background.js         # Service worker
 ├── rubros.js             # Base de datos de categorías
+├── tests/                # Pruebas con el runner nativo de Node.js
 ├── icons/                # Iconos en 3 tamaños
 └── README.md             # Este archivo
 ```
@@ -140,7 +154,7 @@ El paquete listo para subir a Chrome Web Store se genera como ZIP con los archiv
 Versión actual:
 
 ```txt
-empleospublicos_extension_v1.2.1.zip
+1.4.0
 ```
 
 También puede existir una copia en `dist/` para mantener ordenados los paquetes de release. Antes de subir una actualización, verifica que `manifest.json` tenga una versión mayor que la ya publicada.
@@ -170,7 +184,14 @@ También puede existir una copia en `dist/` para mantener ordenados los paquetes
 
 ## 🔄 Versiones
 
-### v1.2.1 (Actual)
+### v1.4.0 (Actual)
+- ✅ Conteos por pestaña y explicación de motivos de filtrado
+- ✅ Visualización temporal de ofertas ocultas
+- ✅ Motor de reglas precompilado y procesamiento incremental
+- ✅ Popup accesible y opción para deshacer cambios
+- ✅ Adaptador dedicado para el portal 2026
+
+### v1.2.1
 - ✅ Ocultado automático del bloque de cifras y métricas de la portada
 - ✅ Versión preparada para publicación en Chrome Web Store
 
@@ -191,18 +212,16 @@ También puede existir una copia en `dist/` para mantener ordenados los paquetes
 
 Ver [ROADMAP.md](./ROADMAP.md) para el plan completo de desarrollo.
 
-**v1.1 (Planeado):**
-- [ ] Tema oscuro
-- [ ] Soporte para múltiples idiomas
-- [ ] Filtrado avanzado por ubicación
-- [ ] Estadísticas de búsqueda
+**Próxima etapa:**
 - [ ] Exportar/importar configuración
+- [ ] Guardar conjuntos de filtros
+- [ ] Filtrado por rango de sueldo
+- [ ] Favoritos y seguimiento local de postulaciones
 
-**v2.0 (Largo plazo):**
-- [ ] Sincronización en la nube
-- [ ] Expresiones regulares (regex)
-- [ ] Historial de ofertas
-- [ ] Notificaciones de nuevas ofertas
+**Más adelante, si existe demanda:**
+- [ ] Búsquedas guardadas y notificaciones
+- [ ] Historial local de ofertas
+- [ ] Compatibilidad con Firefox
 
 ## 📄 Licencia
 

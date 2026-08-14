@@ -5,6 +5,58 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/),
 y este proyecto sigue [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-08-13
+
+### Agregado
+- Barra de estado en el listado con ofertas totales, visibles y ocultas.
+- Vista temporal de ofertas ocultas con el motivo exacto del filtro aplicado.
+- Opción para deshacer el último cambio de palabras o rubros desde el popup.
+- Pruebas unitarias del motor de normalización y coincidencia.
+
+### Mejorado
+- Separa el motor de filtros, el adaptador del portal y los estilos del orquestador principal.
+- Procesa incrementalmente las tarjetas nuevas y precompila las reglas de filtrado.
+- Evita el parpadeo inicial del listado con un arranque seguro de 1,5 segundos.
+- Muestra estadísticas y badges por pestaña, en vez de depender de un contador global.
+- Mejora la navegación por teclado y la semántica accesible del popup.
+
+### Compatibilidad
+- Mantiene el contrato del portal 2026 y un fallback pequeño para listados antiguos conocidos.
+- No agrega permisos ni dependencias externas.
+
+## [1.3.3] - 2026-06-27
+
+### Corregido
+- Mantiene ocultas las ofertas filtradas al cambiar de modo cards a modo listado; una regla CSS del listado estaba sobrescribiendo `display: none`.
+- Restaura la navegación con `J` y `K` después de usar el botón flotante de vista, quitando el foco del botón tras cambiar de modo.
+
+## [1.3.2] - 2026-06-27
+
+### Corregido
+- Amplía el rubro Salud para excluir también ofertas identificadas por señales institucionales y de área como `Ministerio de Salud`, `Servicio de Salud`, `Hospital`, `CRS`, `CESFAM`, `COSAM`, `Ley 19.664`, `Ley 15.076` y `Salud`.
+- Corrige casos donde cargos administrativos o técnicos de instituciones de salud seguían visibles porque no contenían profesiones clínicas en el título.
+
+## [1.3.1] - 2026-06-27
+
+### Corregido
+- Evita que una actualización de la extensión borre filtros, rubros, pausa, modo de vista y última región guardada.
+- Refuerza la persistencia de región en el portal actual de empleospublicos.cl, esperando más tiempo la carga remota de opciones y sincronizando el select visual con el select oculto.
+- Agrega detección más robusta de controles de región para cambios menores del DOM del portal.
+
+## [1.3.0] - 2026-06-21
+
+### Added
+- Soporte para el nuevo portal 2026 de empleospublicos.cl, que ahora renderiza convocatorias en `#results-cards .job-card`.
+- Persistencia automática de la última región seleccionada: al recargar el portal se reaplica en `#filter-region` y `#hero-region-select`.
+- Auto-carga limitada de más resultados cuando los filtros de la extensión dejan muy pocas ofertas visibles.
+
+### Changed
+- Readaptación de botones de acción para las nuevas cards: copiar link y añadir a Google Calendar.
+- Modo lista/grilla actualizado para el nuevo layout del portal, manteniendo fallback para la estructura antigua.
+
+### Removed
+- Eliminada la lógica obsoleta que ocultaba la antigua sección de cifras `#gestionEmpleos`, ya no presente en el portal actual.
+
 ## [1.2.1] - 2026-06-01
 
 ### Fixed

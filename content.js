@@ -1,1110 +1,810 @@
-// Script que se ejecuta en empleospublicos.cl y filtra empleos
+// Orquestador de la extensión en empleospublicos.cl.
+// La lógica pura vive en filter-core.js y el contrato DOM en portal-adapter.js.
 
-// Guard: Solo ejecutar en empleospublicos.cl excepto sitio privado
-// NO ejecutar en sitio privado o dashboard
 function shouldRunOnThisPage() {
-  const pathname = window.location.pathname;
-  const normalizedPathname = pathname.toLowerCase();
+  const pathname = window.location.pathname.toLowerCase();
 
-  // BLOQUEAR: Páginas de detalle/postulación de una convocatoria.
-  // Si hay filtros activos, el fallback por contenido puede confundir el detalle
-  // completo con una "tarjeta" de trabajo y ocultar la página completa.
   if (
-    normalizedPathname.includes('/pub/convocatorias/convpostularavisotrabajo.aspx') ||
-    (normalizedPathname.includes('/pub/convocatorias/') && normalizedPathname.includes('avisotrabajo')) ||
-    (normalizedPathname.includes('/pub/convocatorias/') && normalizedPathname.includes('postular'))
+    pathname.includes('/pub/convocatorias/convpostularavisotrabajo.aspx') ||
+    pathname.includes('/pub/convocatorias/convficha.aspx') ||
+    pathname.includes('/pub/convocatorias/avisotrabajoficha.aspx') ||
+    (pathname.includes('/pub/convocatorias/') && pathname.includes('avisotrabajo')) ||
+    (pathname.includes('/pub/convocatorias/') && pathname.includes('postular'))
   ) {
     return false;
   }
-  
-  // BLOQUEAR: Sitio privado del usuario
-  if (normalizedPathname.includes('/pub/usuarios/')) {
-    return false;
-  }
-  
-  // BLOQUEAR: Login/Logout
-  if (normalizedPathname.includes('/login') || normalizedPathname.includes('/logout')) {
-    return false;
-  }
-  
-  // PERMITIR: Todo lo demás en empleospublicos.cl
-  return true;
+
+  return !(
+    pathname.includes('/pub/usuarios/') ||
+    pathname.includes('/login') ||
+    pathname.includes('/logout')
+  );
 }
 
-// Verificar si debemos ejecutar en esta página
-if (!shouldRunOnThisPage()) {
-  chrome.storage.local.set({ blockedCount: 0 });
-  // No ejecutar nada más - simplemente terminar aquí
-} else {
-  // Encapsular todo en IIFE para evitar variables globales
-  (function() {
+if (shouldRunOnThisPage()) {
+  (() => {
     'use strict';
 
-    // Flag de debug - poner en false para producción
-    const DEBUG = false;
+    const core = globalThis.EPFilterCore;
+    const portal = globalThis.EPPortalAdapter;
 
-    function log(...args) {
-      if (DEBUG) console.log('[Filtro Empleos]', ...args);
+    if (!core || !portal) {
+      document.documentElement.classList.remove('ep-filter-booting');
+      return;
     }
 
-    function warn(...args) {
-      if (DEBUG) console.warn('[Filtro Empleos]', ...args);
-    }
+    const FILTERED_CLASS = 'ep-filtered-hidden';
+    const LIST_MODE_CLASS = 'ep-list-mode';
+    const SELECTED_CLASS = 'ep-keyboard-selected';
+    const REVEAL_CLASS = 'ep-reveal-hidden';
+    const REGION_STORAGE_KEY = 'lastRegion';
+    const MIN_VISIBLE_RESULTS = 6;
+    const MAX_AUTO_LOAD_ATTEMPTS = 4;
 
-    let blockedCount = 0;
     let filters = [];
-    let rubros = [];  // Rubros seleccionados
-    let isPaused = false;  // Estado de pausa
+    let rubros = [];
+    let isPaused = false;
+    let viewMode = 'grid';
+    let revealHidden = false;
+    let compiledRules = core.compileRules();
     let selectedListIndex = -1;
+    let resultsObserver = null;
+    let pageObserver = null;
+    let filterControlsObserver = null;
+    let observerTimer = null;
+    let autoLoadAttempts = 0;
+    let lastAutoLoadSignature = '';
+    let savedRegionToApply = '';
+    let hasStoredRegionPreference = false;
+    let hasAppliedSavedRegion = false;
+    let isApplyingSavedRegion = false;
+    let regionInitAttempts = 0;
 
-// Normalizar texto: quitar acentos y convertir a minúsculas
-// "Médico" → "medico", "MÉDICO" → "medico"
-function normalizeText(text) {
-  return text
-    .toLowerCase()
-    .normalize('NFD')                    // Descomponer caracteres acentuados (é → e + ´)
-    .replace(/[\u0300-\u036f]/g, '');   // Remover marcas diacríticas
-}
+    const pendingCards = new Set();
+    const cardTextCache = new WeakMap();
 
-const statsSectionSelector = '#gestionEmpleos';
-let statsSectionObserver = null;
-
-function hideEmpleosStatsSection() {
-  const statsBlock = document.querySelector(statsSectionSelector);
-  if (!statsBlock) return false;
-
-  const target = statsBlock.closest('section') || statsBlock;
-  if (target.dataset.epHiddenByExtension === 'true') return true;
-
-  target.dataset.epHiddenByExtension = 'true';
-  target.classList.add('ep-hidden-home-section');
-  target.setAttribute('aria-hidden', 'true');
-  target.style.setProperty('display', 'none', 'important');
-
-  log('Se ocultó la sección de métricas de empleos');
-  return true;
-}
-
-function setupStatsSectionHider() {
-  if (hideEmpleosStatsSection()) return;
-  if (statsSectionObserver) return;
-
-  statsSectionObserver = new MutationObserver(() => {
-    if (hideEmpleosStatsSection() && statsSectionObserver) {
-      statsSectionObserver.disconnect();
-      statsSectionObserver = null;
-    }
-  });
-
-  statsSectionObserver.observe(document.documentElement || document.body, {
-    childList: true,
-    subtree: true,
-  });
-
-  setTimeout(() => {
-    if (statsSectionObserver) {
-      statsSectionObserver.disconnect();
-      statsSectionObserver = null;
-    }
-  }, 10000);
-}
-
-// Cargar filtros, rubros y estado de pausa al iniciar
-chrome.storage.local.get(['filters', 'rubros', 'paused'], (result) => {
-  filters = result.filters || [];
-  rubros = result.rubros || [];
-  isPaused = result.paused || false;
-  // Esperar un poco para asegurar que el DOM esté listo
-  setTimeout(() => {
-    filterJobs();
-  }, 150);
-});
-
-// Escuchar cambios en los filtros desde el popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'refilter') {
-    // Recargar filtros, rubros y estado de pausa, luego volver a filtrar
-    chrome.storage.local.get(['filters', 'rubros', 'paused'], (result) => {
-      filters = result.filters || [];
-      rubros = result.rubros || [];
-      isPaused = result.paused || false;
-      resetJobs();
-      filterJobs();
-      applySavedViewMode();
-    });
-  }
-});
-
-function filterJobs() {
-  blockedCount = 0;
-
-  // Revalidar por si el sitio cambia de URL/contenido sin recargar completamente.
-  // Esto evita que la vista de detalle sea ocultada al navegar desde un listado.
-  if (!shouldRunOnThisPage()) {
-    resetJobs();
-    updateBlockedCount();
-    return;
-  }
-
-  // Si el filtrado está pausado, restaurar todos los trabajos y salir
-  if (isPaused) {
-    resetJobs();
-    updateBlockedCount();
-    return;
-  }
-
-  // Intentar encontrar los trabajos en la página
-  // empleospublicos.cl usa diferentes estructuras según la página
-  const jobElements = findJobElements();
-  enhanceJobCards(jobElements);
-
-  if (jobElements.length === 0) {
-    warn('No se encontraron elementos de trabajo en esta página');
-    updateBlockedCount();
-    return;
-  }
-
-  jobElements.forEach((element) => {
-    if (!element.dataset.filteredByExtension && !isVisibleInPage(element)) {
-      return;
+    function hasActiveRules() {
+      return compiledRules.keywordRules.length > 0 || compiledRules.rubroRules.length > 0;
     }
 
-    // Saltar si ya fue procesado previamente
-    if (element.dataset.filteredByExtension === 'true') {
-      if (element.classList.contains('ep-filtered-hidden')) {
-        blockedCount++;
+    function getRubroDefinitions() {
+      if (typeof getRubros !== 'function') return {};
+      return Object.fromEntries(getRubros().map((rubro) => [rubro.id, rubro]));
+    }
+
+    function compileCurrentRules() {
+      compiledRules = core.compileRules({
+        filters,
+        rubros,
+        definitions: getRubroDefinitions(),
+      });
+    }
+
+    function finishInitialBoot() {
+      window.clearTimeout(window.__epFilterBootTimeout);
+      document.documentElement.classList.remove('ep-filter-booting');
+    }
+
+    function isVisibleInPage(element) {
+      if (!element?.isConnected) return false;
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false;
+      return element.offsetParent !== null || element.getClientRects().length > 0;
+    }
+
+    function getCardText(element, invalidate = false) {
+      if (invalidate) cardTextCache.delete(element);
+      if (!cardTextCache.has(element)) {
+        cardTextCache.set(element, portal.getJobText(element));
       }
-      return;
+      return cardTextCache.get(element);
     }
 
-    if (shouldBlockJob(element)) {
-      element.classList.add('ep-filtered-hidden');
-      element.dataset.filteredByExtension = 'true';
-      blockedCount++;
+    function formatReasons(reasons) {
+      return reasons.map((reason) => {
+        if (reason.type === 'keyword') return `palabra: ${reason.label}`;
+        return `rubro: ${reason.label} — ${reason.keyword}`;
+      }).join(' · ');
     }
-  });
 
-  updateBlockedCount();
-  log(`Filtrado completado: ${blockedCount} trabajos ocultos de ${jobElements.length}`);
-}
+    function updateReasonBadge(element, reasons) {
+      let badge = element.querySelector(':scope > .ep-filter-reason');
 
-function findJobElements() {
-  // Intentar múltiples selectores comunes para encontrar trabajos
-  // NOTA: Usamos selectores que encuentren TODOS los elementos, incluso los ocultos
-  const selectors = [
-    // empleospublicos.cl específicos (primero los más precisos)
-    '.todas-convocatorias .items',     // Con contenedor padre (más específico)
-    '.items',                          // Selector principal
-    '.items.col-md-4',                 // Variante con tamaño
-    '.items.col-lg-4',                 // Otra variante con tamaño
-    
-    // empleospublicos.cl alternativas
-    '.panel-oferta',
-    '.oferta-item',
-    '.job-offer',
-    '.resultado',
-    
-    // Genéricos
-    '.oferta', 
-    '.job-item', 
-    '.job-card',
-    '[data-job]',
-    '.item-oferta',
-    '.resultado-busqueda',
-    '.card-oferta',
-    'article.resultado',
-    'article[role="listitem"]',
-    '[role="listitem"]',
-    
-    // Por clase parcial (menos específicos, como fallback)
-    'div[class*="oferta"]',
-    'div[class*="job"]',
-    'div[class*="resultado"]',
-    'div[class*="vacancy"]',
-  ];
-
-  for (const selector of selectors) {
-    try {
-      const elements = Array.from(document.querySelectorAll(selector));
-      if (elements.length > 0) {
-        log(`Encontrados ${elements.length} trabajos usando selector: ${selector}`);
-        return elements;
+      if (reasons.length === 0) {
+        badge?.remove();
+        return;
       }
-    } catch (e) {
-      // Algunos selectores pueden ser inválidos, ignorar y continuar
+
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'ep-filter-reason';
+        badge.dataset.epOwned = 'true';
+        element.prepend(badge);
+      }
+
+      badge.textContent = `Oculta por ${formatReasons(reasons)}`;
     }
-  }
 
-  // Si no encontramos con selectores específicos, buscar divs con contenido de trabajo
-  return findJobsByContent();
-}
+    function processJob(element, { invalidateText = false } = {}) {
+      if (!element?.isConnected) return;
 
-function isVisibleInPage(element) {
-  if (!element.isConnected) return false;
+      const match = (!isPaused && hasActiveRules())
+        ? core.matchText(getCardText(element, invalidateText), compiledRules)
+        : { blocked: false, reasons: [] };
 
-  const computedStyle = window.getComputedStyle(element);
-  if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
-    return false;
-  }
+      element.classList.toggle(FILTERED_CLASS, match.blocked);
 
-  if (element.hidden || element.getAttribute('aria-hidden') === 'true') {
-    return false;
-  }
+      if (match.blocked) {
+        element.dataset.filteredByExtension = 'true';
+      } else {
+        delete element.dataset.filteredByExtension;
+      }
 
-  return element.offsetParent !== null || element.getClientRects().length > 0;
-}
+      updateReasonBadge(element, match.reasons);
+      enhanceJobCard(element);
+    }
 
-function getVisibleJobElements() {
-  return findJobElements().filter((element) => (
-    !element.dataset.filteredByExtension &&
-    isVisibleInPage(element)
-  ));
-}
+    function filterAllJobs({ invalidateText = false } = {}) {
+      const jobElements = portal.findJobElements();
+      jobElements.forEach((element) => processJob(element, { invalidateText }));
 
-function findJobsByContent() {
-  // Estrategia alternativa: buscar elementos que contienen palabras clave de trabajo
-  // Solo buscar dentro del contenedor de convocatorias para evitar falsos positivos
-  const container = document.querySelector('.todas-convocatorias');
-  const searchRoot = container || document.body;
+      clampSelectedListItem();
+      applyRevealMode();
+      updateInterfaceState();
+      maybeAutoLoadMoreResults(jobElements);
 
-  const allElements = searchRoot.querySelectorAll('div, article');
-  const jobElements = [];
-  const seenElements = new Set();
-
-  for (const element of allElements) {
-    // Evitar duplicados
-    if (seenElements.has(element)) continue;
-
-    // Ignorar elementos muy pequeños o muy grandes
-    if (element.offsetHeight < 80 || element.offsetHeight > 800) continue;
-
-    // Verificar que tenga estructura de card de trabajo
-    const hasTitle = element.querySelector('h3, h4, h5');
-    const hasLink = element.querySelector('a[href*="convocatorias"], a[href*="postular"]');
-    const hasInstitution = element.textContent?.toLowerCase().includes('ministerio') ||
-                           element.textContent?.toLowerCase().includes('servicio de salud');
-
-    if (hasTitle && hasLink && hasInstitution) {
-      // Verificar que no sea un contenedor padre de otro elemento ya encontrado
-      const isParentOfExisting = jobElements.some((existing) => existing.contains(element));
-      if (!isParentOfExisting) {
-        // Remover elementos hijos que ya estén en la lista
-        const childrenToRemove = jobElements.filter((existing) => element.contains(existing));
-        childrenToRemove.forEach((child) => {
-          jobElements.splice(jobElements.indexOf(child), 1);
-          seenElements.delete(child);
-        });
-
-        jobElements.push(element);
-        seenElements.add(element);
+      if (jobElements.length > 0 || isPaused || !hasActiveRules()) {
+        finishInitialBoot();
       }
     }
-  }
 
-  return jobElements;
-}
+    function getFilterState() {
+      const jobs = portal.findJobElements();
+      const hidden = jobs.filter((job) => job.classList.contains(FILTERED_CLASS)).length;
 
-function shouldBlockJob(element) {
-  if (filters.length === 0 && rubros.length === 0) {
-    return false;
-  }
+      return {
+        total: jobs.length,
+        visible: Math.max(0, jobs.length - hidden),
+        hidden,
+        paused: isPaused,
+        viewMode,
+        revealHidden,
+      };
+    }
 
-  const text = normalizeText(element.textContent || '');
-  
-  // Bloquear si coincide con palabra clave personalizada
-  if (filters.some((filter) => {
-    const filterLower = normalizeText(filter);
-    return text.includes(filterLower);
-  })) {
-    return true;
-  }
-  
-  // Bloquear si coincide con algún rubro seleccionado
-  if (rubros.length > 0) {
-    for (const rubroId of rubros) {
-      const keywords = getRubroKeywords(rubroId);
-      for (const keyword of keywords) {
-        if (text.includes(normalizeText(keyword))) {
+    function updateInterfaceState() {
+      const state = getFilterState();
+      updateToolbar(state);
+
+      chrome.runtime.sendMessage({
+        action: 'updateTabBadge',
+        hidden: state.hidden,
+        paused: state.paused,
+      }, () => void chrome.runtime.lastError);
+    }
+
+    function createToolbar() {
+      const container = portal.getResultsContainer();
+      if (!container) return null;
+
+      let toolbar = document.getElementById('ep-filter-toolbar');
+      if (toolbar) return toolbar;
+
+      toolbar = document.createElement('section');
+      toolbar.id = 'ep-filter-toolbar';
+      toolbar.dataset.epOwned = 'true';
+      toolbar.setAttribute('aria-label', 'Estado del filtro de la extensión');
+      toolbar.innerHTML = `
+        <span id="ep-filter-summary" aria-live="polite"></span>
+        <span class="ep-filter-toolbar__actions">
+          <button type="button" class="ep-filter-toolbar__button" id="ep-toggle-hidden"></button>
+          <button type="button" class="ep-filter-toolbar__button" id="ep-refresh-filter">Actualizar filtro</button>
+        </span>
+      `;
+
+      toolbar.querySelector('#ep-toggle-hidden').addEventListener('click', () => {
+        revealHidden = !revealHidden;
+        clearSelectedListItem();
+        applyRevealMode();
+        updateInterfaceState();
+      });
+
+      toolbar.querySelector('#ep-refresh-filter').addEventListener('click', () => {
+        filterAllJobs({ invalidateText: true });
+      });
+
+      container.parentNode.insertBefore(toolbar, container);
+      return toolbar;
+    }
+
+    function updateToolbar(state) {
+      const toolbar = createToolbar();
+      if (!toolbar) return;
+
+      const summary = toolbar.querySelector('#ep-filter-summary');
+      const toggleButton = toolbar.querySelector('#ep-toggle-hidden');
+
+      if (state.paused) {
+        summary.textContent = `${state.total} ofertas · filtrado en pausa`;
+      } else {
+        summary.textContent = `${state.total} ofertas · ${state.visible} visibles · ${state.hidden} ocultas`;
+      }
+
+      toggleButton.hidden = state.hidden === 0 || state.paused;
+      toggleButton.textContent = state.revealHidden ? 'Volver a ocultar' : 'Mostrar ocultas';
+      toggleButton.setAttribute('aria-pressed', state.revealHidden ? 'true' : 'false');
+    }
+
+    function applyRevealMode() {
+      const container = portal.getResultsContainer();
+      if (!container) return;
+      container.classList.toggle(REVEAL_CLASS, revealHidden && !isPaused);
+    }
+
+    function maybeAutoLoadMoreResults(jobElements) {
+      const container = document.querySelector('#results-cards');
+      const button = document.querySelector('#load-more-btn');
+
+      if (!hasActiveRules() || isPaused || !container || !button) {
+        autoLoadAttempts = 0;
+        lastAutoLoadSignature = '';
+        return;
+      }
+
+      const visibleCount = jobElements.filter((element) => !element.classList.contains(FILTERED_CLASS)).length;
+      if (visibleCount >= MIN_VISIBLE_RESULTS) {
+        autoLoadAttempts = 0;
+        lastAutoLoadSignature = '';
+        return;
+      }
+
+      const canLoad = (
+        !button.hidden &&
+        !button.disabled &&
+        !button.hasAttribute('data-fetching') &&
+        isVisibleInPage(button)
+      );
+
+      if (!canLoad || autoLoadAttempts >= MAX_AUTO_LOAD_ATTEMPTS) return;
+
+      const signature = `${jobElements.length}:${visibleCount}:${button.textContent}`;
+      if (signature === lastAutoLoadSignature) return;
+
+      lastAutoLoadSignature = signature;
+      autoLoadAttempts += 1;
+      window.setTimeout(() => {
+        if (button.isConnected && !button.hidden && !button.disabled) button.click();
+      }, 100);
+    }
+
+    function iconSvg(name) {
+      const icons = {
+        calendarPlus: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path><path d="M12 14v4"></path><path d="M10 16h4"></path></svg>',
+        copy: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>',
+      };
+      return icons[name] || '';
+    }
+
+    function enhanceJobCard(element) {
+      normalizeExistingCalendarButton(element);
+      enhanceGoogleCalendarButton(element);
+      enhanceCopyLinkButton(element);
+      hideSocialShareBlock(element);
+    }
+
+    function normalizeExistingCalendarButton(element) {
+      element.querySelectorAll('.calendar-link, .card-footer .cronograma').forEach((button) => {
+        if (button.dataset.epCalendarReady === 'true') return;
+        button.dataset.epCalendarReady = 'true';
+        button.classList.add('ep-action-button', 'ep-calendarization-button');
+        button.title = 'Ver calendarización';
+        button.setAttribute('aria-label', 'Ver calendarización');
+      });
+    }
+
+    function enhanceGoogleCalendarButton(element) {
+      if (element.querySelector('.ep-google-calendar-button')) return;
+      const actionGroup = portal.getActionGroup(element);
+      if (!actionGroup) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ep-action-button ep-google-calendar-button';
+      button.dataset.epOwned = 'true';
+      button.title = 'Añadir fecha de cierre a Google Calendar';
+      button.setAttribute('aria-label', button.title);
+      button.innerHTML = `${iconSvg('calendarPlus')}<span>Añadir a Google Calendar</span>`;
+
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const calendarUrl = buildGoogleCalendarUrl(element);
+        if (!calendarUrl) {
+          showTemporaryButtonLabel(button, 'Sin fecha');
+          return;
+        }
+        window.open(calendarUrl, '_blank', 'noopener');
+      });
+
+      const nativeCalendar = actionGroup.querySelector('.calendar-link, .cronograma');
+      if (nativeCalendar?.nextSibling) {
+        actionGroup.insertBefore(button, nativeCalendar.nextSibling);
+      } else {
+        actionGroup.prepend(button);
+      }
+    }
+
+    function enhanceCopyLinkButton(element) {
+      if (element.querySelector('.ep-copy-link-button')) return;
+      const actionGroup = portal.getActionGroup(element);
+      if (!actionGroup) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ep-action-button ep-copy-link-button';
+      button.dataset.epOwned = 'true';
+      button.title = 'Copiar link del concurso';
+      button.setAttribute('aria-label', button.title);
+      button.innerHTML = `${iconSvg('copy')}<span class="ep-copy-link-text">Copiar link</span>`;
+
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const copied = await copyText(portal.getJobLink(element));
+        showCopyFeedback(button, copied ? 'Copiado' : 'No se pudo copiar');
+      });
+
+      const shareBlock = actionGroup.querySelector('.share-links, .compartir-social');
+      if (shareBlock) actionGroup.insertBefore(button, shareBlock);
+      else actionGroup.appendChild(button);
+    }
+
+    function hideSocialShareBlock(element) {
+      element.querySelectorAll('.share-links, .compartir-social').forEach((shareBlock) => {
+        shareBlock.classList.add('ep-social-hidden');
+        shareBlock.setAttribute('aria-hidden', 'true');
+      });
+    }
+
+    function getApplicationDeadlineDate(element) {
+      const timestamp = portal.getDeadlineTimestamp(element);
+      if (timestamp && /^\d+$/.test(timestamp)) {
+        const date = new Date(Number(timestamp));
+        if (!Number.isNaN(date.getTime())) return date;
+      }
+
+      const match = portal.getDeadlineText(element).match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+      if (!match) return null;
+
+      const [, day, month, year] = match;
+      const date = new Date(Number(year), Number(month) - 1, Number(day));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatCalendarDate(date) {
+      const year = String(date.getFullYear());
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}${month}${day}`;
+    }
+
+    function buildGoogleCalendarUrl(element) {
+      const closeDate = getApplicationDeadlineDate(element);
+      if (!closeDate) return '';
+
+      const nextDate = new Date(closeDate);
+      nextDate.setDate(closeDate.getDate() + 1);
+      const jobLink = portal.getJobLink(element);
+
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: `[Postulación] ${portal.getJobTitle(element)}`,
+        dates: `${formatCalendarDate(closeDate)}/${formatCalendarDate(nextDate)}`,
+        details: [
+          'Fecha de cierre de postulación.',
+          '',
+          jobLink,
+          '',
+          'Creado con Filtrar ofertas empleospublicos.cl https://link.yaob.cl/empleos-publicos',
+        ].join('\n'),
+      });
+
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
           return true;
         }
+      } catch (error) {
+        // El fallback cubre navegadores sin permiso de Clipboard API.
       }
-    }
-  }
-  
-  return false;
-}
 
-function resetJobs() {
-  // Restaurar todos los trabajos filtrados
-  const hiddenJobs = document.querySelectorAll('[data-filtered-by-extension="true"]');
-  hiddenJobs.forEach((element) => {
-    element.classList.remove('ep-filtered-hidden');
-    delete element.dataset.filteredByExtension;
-  });
-  blockedCount = 0;
-  log(`Restaurados ${hiddenJobs.length} trabajos`);
-}
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.readOnly = true;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
 
-function getJobLink(element) {
-  const link = element.querySelector(
-    '.top h3 a[href], h3 a[href], a[href*="convocatorias"][href], a[href*="postular"][href]'
-  );
-
-  return link ? new URL(link.getAttribute('href'), window.location.href).href : window.location.href;
-}
-
-function getJobTitle(element) {
-  return element.querySelector('.top h3, h3')?.textContent?.trim() || 'Concurso Empleos Públicos';
-}
-
-function enhanceJobCards(jobElements = findJobElements()) {
-  jobElements.forEach((element) => {
-    enhanceCalendarButton(element);
-    enhanceCopyLinkButton(element);
-  });
-}
-
-function getActionGroup(element) {
-  const footer = element.querySelector('.card-footer');
-  if (!footer) return null;
-
-  let actionGroup = footer.querySelector('.ep-card-actions');
-  if (!actionGroup) {
-    actionGroup = document.createElement('div');
-    actionGroup.className = 'ep-card-actions';
-    footer.appendChild(actionGroup);
-  }
-
-  return actionGroup;
-}
-
-function iconSvg(name) {
-  const icons = {
-    calendar: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path></svg>',
-    calendarPlus: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4"></path><path d="M16 2v4"></path><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18"></path><path d="M12 14v4"></path><path d="M10 16h4"></path></svg>',
-    copy: '<svg class="ep-action-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>',
-  };
-
-  return icons[name] || '';
-}
-
-function enhanceCalendarButton(element) {
-  const calendarButton = element.querySelector('.card-footer .cronograma');
-  if (!calendarButton || calendarButton.dataset.epCalendarReady === 'true') return;
-
-  const actionGroup = getActionGroup(element);
-  if (!actionGroup) return;
-
-  calendarButton.dataset.epCalendarReady = 'true';
-  calendarButton.classList.add('ep-action-button', 'ep-calendarization-button');
-  calendarButton.title = 'Ver calendarización';
-  calendarButton.setAttribute('aria-label', 'Ver calendarización');
-  calendarButton.innerHTML = `${iconSvg('calendar')}<span>Calendarización</span>`;
-
-  const googleButton = document.createElement('button');
-  googleButton.type = 'button';
-  googleButton.className = 'ep-action-button ep-google-calendar-button';
-  googleButton.title = 'Añadir fecha postulación a Google Calendar';
-  googleButton.setAttribute('aria-label', 'Añadir fecha postulación a Google Calendar');
-  googleButton.innerHTML = `${iconSvg('calendarPlus')}<span>Añadir fecha postulación a Google Calendar</span>`;
-
-  googleButton.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const calendarUrl = buildGoogleCalendarUrl(element);
-    if (!calendarUrl) {
-      showCalendarFeedback(googleButton, 'No se encontró fecha');
-      return;
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch (error) {
+        copied = false;
+      }
+      textarea.remove();
+      return copied;
     }
 
-    window.open(calendarUrl, '_blank', 'noopener');
-  });
+    function showTemporaryButtonLabel(button, label) {
+      const originalHtml = button.innerHTML;
+      button.textContent = label;
+      window.clearTimeout(button.epTemporaryLabelTimer);
+      button.epTemporaryLabelTimer = window.setTimeout(() => {
+        button.innerHTML = originalHtml;
+      }, 1400);
+    }
 
-  actionGroup.appendChild(calendarButton);
-  actionGroup.appendChild(googleButton);
-}
+    function showCopyFeedback(button, label) {
+      const text = button.querySelector('.ep-copy-link-text');
+      const originalLabel = text?.textContent || 'Copiar link';
+      button.classList.add('ep-copy-link-button--copied');
+      if (text) text.textContent = label;
 
-function enhanceCopyLinkButton(element) {
-  const socialBlock = element.querySelector('.card-footer .compartir-social');
-  if (!socialBlock || socialBlock.dataset.epCopyReady === 'true') return;
+      window.clearTimeout(button.epCopyFeedbackTimer);
+      button.epCopyFeedbackTimer = window.setTimeout(() => {
+        button.classList.remove('ep-copy-link-button--copied');
+        if (text) text.textContent = originalLabel;
+      }, 1400);
+    }
 
-  const actionGroup = getActionGroup(element);
-  if (!actionGroup) return;
+    function createViewToggleButton() {
+      if (!portal.getResultsContainer() || document.getElementById('ep-view-toggle')) return;
 
-  socialBlock.dataset.epCopyReady = 'true';
-  socialBlock.classList.add('ep-copy-link-wrapper');
-  socialBlock.innerHTML = '';
+      const button = document.createElement('button');
+      button.id = 'ep-view-toggle';
+      button.type = 'button';
+      button.dataset.epOwned = 'true';
+      button.setAttribute('aria-label', 'Cambiar entre vista de grilla y lista');
+      button.addEventListener('click', () => {
+        viewMode = viewMode === 'list' ? 'grid' : 'list';
+        chrome.storage.local.set({ viewMode }, () => {
+          applyViewMode();
+          button.blur();
+          updateInterfaceState();
+        });
+      });
 
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'ep-action-button ep-copy-link-button';
-  button.title = 'Copiar link del concurso';
-  button.setAttribute('aria-label', 'Copiar link del concurso');
-  button.innerHTML = `
-    ${iconSvg('copy')}
-    <span class="ep-copy-link-text">Copiar link</span>
-  `;
+      document.body.appendChild(button);
+      applyViewMode();
+    }
 
-  button.addEventListener('click', async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+    function applyViewMode() {
+      const container = portal.getResultsContainer();
+      const button = document.getElementById('ep-view-toggle');
+      if (!container) return;
 
-    const link = getJobLink(element);
-    const copied = await copyText(link);
-    showCopyFeedback(button, copied ? 'Copiado' : 'No se pudo copiar');
-  });
+      const isList = viewMode === 'list';
+      container.classList.toggle(LIST_MODE_CLASS, isList);
 
-  socialBlock.appendChild(button);
-  actionGroup.appendChild(socialBlock);
-}
+      if (button) {
+        button.textContent = isList ? '☰' : '⊞';
+        button.title = isList ? 'Cambiar a vista de grilla' : 'Cambiar a vista de lista';
+        button.setAttribute('aria-pressed', isList ? 'true' : 'false');
+      }
 
-function buildGoogleCalendarUrl(element) {
-  const deadlineDate = getApplicationDeadlineDate(element);
-  if (!deadlineDate) return '';
+      if (!isList) clearSelectedListItem();
+    }
 
-  const nextDate = new Date(deadlineDate);
-  nextDate.setDate(deadlineDate.getDate() + 1);
+    function getNavigableJobs() {
+      return portal.findJobElements().filter((element) => {
+        const allowedByFilter = revealHidden || !element.classList.contains(FILTERED_CLASS);
+        return allowedByFilter && isVisibleInPage(element);
+      });
+    }
 
-  const jobLink = getJobLink(element);
-  const details = [
-    'Fecha de postulación tope.',
-    '',
-    jobLink,
-    '',
-    'Creado con Filtrar ofertas empleospublicos.cl https://link.yaob.cl/empleos-publicos',
-  ].join('\n');
+    function setupKeyboardNavigation() {
+      if (document.body.dataset.epKeyboardNavigationReady === 'true') return;
+      document.body.dataset.epKeyboardNavigationReady = 'true';
 
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: `[Postulación] ${getJobTitle(element)}`,
-    dates: `${formatCalendarDate(deadlineDate)}/${formatCalendarDate(nextDate)}`,
-    details,
-  });
+      document.addEventListener('keydown', (event) => {
+        if (shouldIgnoreKeyboardShortcut(event)) return;
+        const key = event.key.toLowerCase();
+        if (!['j', 'k', 'enter'].includes(key)) return;
 
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
+        const container = portal.getResultsContainer();
+        if (!container?.classList.contains(LIST_MODE_CLASS)) return;
 
-function getApplicationDeadlineDate(element) {
-  const labelText = element.querySelector('.label-estado')?.textContent || '';
-  const match = labelText.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (!match) return null;
+        if (key === 'enter') {
+          const selected = getNavigableJobs()[selectedListIndex];
+          const link = selected?.querySelector('a[data-card-link][href], h3 a[href], a[href*="convocatorias"][href]');
+          if (!link) return;
+          event.preventDefault();
+          link.click();
+          return;
+        }
 
-  const [, day, month, year] = match;
-  return new Date(Number(year), Number(month) - 1, Number(day));
-}
+        event.preventDefault();
+        moveListSelection(key === 'j' ? 1 : -1);
+      });
+    }
 
-function formatCalendarDate(date) {
-  const year = date.getFullYear().toString();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+    function shouldIgnoreKeyboardShortcut(event) {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return true;
+      const tagName = event.target?.tagName?.toLowerCase();
+      return ['input', 'textarea', 'select', 'button'].includes(tagName) || event.target?.isContentEditable;
+    }
 
-  return `${year}${month}${day}`;
-}
+    function moveListSelection(delta) {
+      const jobs = getNavigableJobs();
+      if (jobs.length === 0) {
+        clearSelectedListItem();
+        return;
+      }
 
-function showCalendarFeedback(button, label) {
-  const originalHtml = button.innerHTML;
-  button.innerHTML = `<span>${label}</span>`;
+      selectedListIndex = selectedListIndex < 0 ? 0 : selectedListIndex + delta;
+      if (selectedListIndex < 0) selectedListIndex = jobs.length - 1;
+      if (selectedListIndex >= jobs.length) selectedListIndex = 0;
 
-  clearTimeout(button.epCalendarFeedbackTimer);
-  button.epCalendarFeedbackTimer = setTimeout(() => {
-    button.innerHTML = originalHtml;
-  }, 1400);
-}
+      portal.findJobElements().forEach((job) => job.classList.remove(SELECTED_CLASS));
+      jobs[selectedListIndex].classList.add(SELECTED_CLASS);
+      jobs[selectedListIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 
-async function copyText(text) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
+    function clearSelectedListItem() {
+      portal.findJobElements().forEach((job) => job.classList.remove(SELECTED_CLASS));
+      selectedListIndex = -1;
+    }
+
+    function clampSelectedListItem() {
+      const jobs = getNavigableJobs();
+      if (selectedListIndex >= jobs.length) selectedListIndex = jobs.length - 1;
+      if (jobs.length === 0) clearSelectedListItem();
+    }
+
+    function isExtensionNode(node) {
+      return node instanceof Element && Boolean(
+        node.dataset.epOwned === 'true' || node.closest('[data-ep-owned="true"]')
+      );
+    }
+
+    function scheduleObserverFlush() {
+      window.clearTimeout(observerTimer);
+      observerTimer = window.setTimeout(() => {
+        const cards = Array.from(pendingCards);
+        pendingCards.clear();
+        cards.forEach((card) => processJob(card, { invalidateText: true }));
+        applyViewMode();
+        applyRevealMode();
+        updateInterfaceState();
+        maybeAutoLoadMoreResults(portal.findJobElements());
+        if (portal.findJobElements().length > 0) finishInitialBoot();
+      }, 150);
+    }
+
+    function setupResultsObserver() {
+      const container = portal.getResultsContainer();
+      if (!container || resultsObserver?.epTarget === container) return;
+      resultsObserver?.disconnect();
+
+      resultsObserver = new MutationObserver((mutations) => {
+        let shouldRefresh = false;
+
+        mutations.forEach((mutation) => {
+          if (isExtensionNode(mutation.target)) return;
+          if (mutation.removedNodes.length > 0) shouldRefresh = true;
+
+          mutation.addedNodes.forEach((node) => {
+            if (!(node instanceof Element) || isExtensionNode(node)) return;
+            const cards = portal.findJobElementsIn(node);
+            cards.forEach((card) => {
+              pendingCards.add(card);
+              cardTextCache.delete(card);
+            });
+            if (cards.length > 0) shouldRefresh = true;
+          });
+        });
+
+        if (shouldRefresh) scheduleObserverFlush();
+      });
+
+      resultsObserver.epTarget = container;
+      resultsObserver.observe(container, { childList: true, subtree: true });
+    }
+
+    function setupPageObserver() {
+      if (pageObserver || portal.getResultsContainer()) return;
+
+      pageObserver = new MutationObserver(() => {
+        if (!portal.getResultsContainer()) return;
+        pageObserver.disconnect();
+        pageObserver = null;
+        setupResultsObserver();
+        createViewToggleButton();
+        createToolbar();
+        filterAllJobs();
+      });
+
+      pageObserver.observe(document.documentElement, { childList: true, subtree: true });
+      window.setTimeout(() => {
+        pageObserver?.disconnect();
+        pageObserver = null;
+      }, 12000);
+    }
+
+    function normalizeRegionValue(value) {
+      return core.normalizeText(value)
+        .replace(/\bo\b/g, '')
+        .replace(/gral\./g, 'general')
+        .replace(/[’']/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function findMatchingOptionValue(select, value) {
+      if (!select) return null;
+      if (!value) return '';
+
+      const options = Array.from(select.options || []);
+      const exact = options.find((option) => option.value === value);
+      if (exact) return exact.value;
+
+      const normalized = normalizeRegionValue(value);
+      const match = options.find((option) => (
+        normalizeRegionValue(option.value) === normalized ||
+        normalizeRegionValue(option.textContent) === normalized
+      ));
+      return match ? match.value : null;
+    }
+
+    function syncRegionSelect(select, value) {
+      const matchingValue = findMatchingOptionValue(select, value);
+      if (!select || matchingValue === null) return false;
+
+      select.value = matchingValue;
+      if (select._comboSelect?.reset) select._comboSelect.reset(matchingValue);
+      else if (window.refreshSearchableSelect) window.refreshSearchableSelect(select);
       return true;
     }
-  } catch (e) {
-    warn('Clipboard API falló, usando fallback', e);
-  }
 
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.top = '-9999px';
-  textarea.style.left = '-9999px';
-  document.body.appendChild(textarea);
-  textarea.select();
+    function persistSelectedRegion(select) {
+      if (isApplyingSavedRegion) return;
+      chrome.storage.local.set({ [REGION_STORAGE_KEY]: select?.value || '' });
+    }
 
-  let copied = false;
-  try {
-    copied = document.execCommand('copy');
-  } catch (e) {
-    warn('Fallback de copiado falló', e);
-  }
+    function setupRegionPersistence() {
+      portal.getRegionSelects().forEach((select) => {
+        if (select.dataset.epRegionPersistenceReady === 'true') return;
+        select.dataset.epRegionPersistenceReady = 'true';
+        ['change', 'input', 'blur'].forEach((eventName) => {
+          select.addEventListener(eventName, () => persistSelectedRegion(select));
+        });
+      });
+      setupFilterControlsObserver();
+    }
 
-  textarea.remove();
-  return copied;
-}
+    function applySavedRegionWhenReady() {
+      setupRegionPersistence();
+      if (!hasStoredRegionPreference || hasAppliedSavedRegion) return true;
 
-function showCopyFeedback(button, label) {
-  const text = button.querySelector('.ep-copy-link-text');
-  const originalLabel = text?.textContent || 'Copiar link';
+      const targetSelect = portal.getRegionSelects().find((select) => (
+        findMatchingOptionValue(select, savedRegionToApply) !== null
+      ));
+      if (!targetSelect) return false;
 
-  button.classList.add('ep-copy-link-button--copied');
-  if (text) text.textContent = label;
+      isApplyingSavedRegion = true;
+      const filterSelect = document.querySelector('#filter-region');
+      const heroSelect = document.querySelector('#hero-region-select');
+      const appliedFilter = syncRegionSelect(filterSelect, savedRegionToApply);
+      const appliedHero = syncRegionSelect(heroSelect, savedRegionToApply);
+      syncRegionSelect(targetSelect, savedRegionToApply);
 
-  clearTimeout(button.epCopyFeedbackTimer);
-  button.epCopyFeedbackTimer = setTimeout(() => {
-    button.classList.remove('ep-copy-link-button--copied');
-    if (text) text.textContent = originalLabel;
-  }, 1400);
-}
+      const dispatch = (select) => {
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      };
 
-function updateBlockedCount() {
-  // Guardar el contador para que se muestre en el popup
-  chrome.storage.local.set({ blockedCount });
-}
+      if (appliedHero) dispatch(heroSelect);
+      if (appliedFilter) dispatch(filterSelect);
+      if (!appliedHero && !appliedFilter) dispatch(targetSelect);
 
-// Volver a filtrar cuando el DOM cambia (para sitios dinámicos)
-let observer = null;
+      hasAppliedSavedRegion = true;
+      window.setTimeout(() => { isApplyingSavedRegion = false; }, 0);
+      return true;
+    }
 
-function setupObserver() {
-  // Observar solo el contenedor de convocatorias, no todo el body
-  const target = document.querySelector('.todas-convocatorias');
-  if (!target || observer) return;
+    function initializeRegionPersistence() {
+      if (applySavedRegionWhenReady() || regionInitAttempts >= 120) return;
+      regionInitAttempts += 1;
+      window.setTimeout(initializeRegionPersistence, 250);
+    }
 
-  observer = new MutationObserver(() => {
-    // Debounce para no filtrar constantemente
-    clearTimeout(filterJobs.debounceTimer);
-    filterJobs.debounceTimer = setTimeout(() => {
-      resetJobs();
-      filterJobs();
-      enhanceJobCards();
-      clampSelectedListItem();
+    function setupFilterControlsObserver() {
+      const root = document.querySelector('.filters-sidebar, .hero-home') || document.body;
+      if (!root || filterControlsObserver?.epTarget === root) return;
+      filterControlsObserver?.disconnect();
+
+      filterControlsObserver = new MutationObserver((mutations) => {
+        const changed = mutations.some((mutation) => Array.from(mutation.addedNodes).some((node) => (
+          node instanceof Element && (
+            node.matches('select[aria-label*="Regi"], select[id*="region" i], option') ||
+            node.querySelector('select[aria-label*="Regi"], select[id*="region" i], option')
+          )
+        )));
+        if (!changed) return;
+        setupRegionPersistence();
+        initializeRegionPersistence();
+      });
+
+      filterControlsObserver.epTarget = root;
+      filterControlsObserver.observe(root, { childList: true, subtree: true });
+    }
+
+    function loadState(callback) {
+      chrome.storage.local.get(['filters', 'rubros', 'paused', 'viewMode', REGION_STORAGE_KEY], (result) => {
+        filters = Array.isArray(result.filters) ? result.filters : [];
+        rubros = Array.isArray(result.rubros) ? result.rubros : [];
+        isPaused = Boolean(result.paused);
+        viewMode = result.viewMode === 'list' ? 'list' : 'grid';
+        hasStoredRegionPreference = Object.prototype.hasOwnProperty.call(result, REGION_STORAGE_KEY);
+        savedRegionToApply = result[REGION_STORAGE_KEY] || '';
+        compileCurrentRules();
+        callback?.();
+      });
+    }
+
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.action === 'getFilterState') {
+        sendResponse(getFilterState());
+        return;
+      }
+
+      if (message.action === 'setRevealHidden') {
+        revealHidden = Boolean(message.value);
+        clearSelectedListItem();
+        applyRevealMode();
+        updateInterfaceState();
+        sendResponse(getFilterState());
+        return;
+      }
+
+      if (message.action === 'refilter') {
+        loadState(() => {
+          if (isPaused) revealHidden = false;
+          applyViewMode();
+          initializeRegionPersistence();
+          filterAllJobs();
+          sendResponse(getFilterState());
+        });
+        return true;
+      }
+    });
+
+    setupKeyboardNavigation();
+    setupPageObserver();
+    setupResultsObserver();
+    createViewToggleButton();
+    createToolbar();
+
+    loadState(() => {
+      applyViewMode();
+      initializeRegionPersistence();
+      filterAllJobs();
+    });
+
+    window.setTimeout(() => {
+      setupResultsObserver();
+      createViewToggleButton();
+      createToolbar();
+      filterAllJobs();
     }, 800);
-  });
-
-  observer.observe(target, {
-    childList: true,
-    subtree: true,
-    attributes: false,
-    characterData: false,
-  });
-
-  log('Observer configurado en .todas-convocatorias');
+  })();
+} else {
+  document.documentElement.classList.remove('ep-filter-booting');
 }
-
-// Esperar a que el contenedor exista antes de configurar observer y botón de vista
-let initComplete = false;
-
-function initializeWhenReady() {
-  if (initComplete) return;
-
-  const container = document.querySelector('.todas-convocatorias');
-  if (!container) return;
-
-  initComplete = true;
-  setupObserver();
-  createViewToggleButton();
-  applySavedViewMode();
-  enhanceJobCards();
-  setupKeyboardNavigation();
-}
-
-// Polling para esperar el contenedor
-const waitForContainer = setInterval(() => {
-  initializeWhenReady();
-}, 300);
-
-// Timeout de seguridad
-setTimeout(() => {
-  clearInterval(waitForContainer);
-  if (!initComplete) {
-    warn('No se encontró .todas-convocatorias en 10 segundos');
-  }
-}, 10000);
-
-// ===== MODO DE VISTA (GRID / LISTA) =====
-
-// Inyectar estilos CSS para el botón flotante y el modo lista
-function injectViewModeStyles() {
-  if (document.getElementById('ep-view-mode-styles')) return;
-
-  const style = document.createElement('style');
-  style.id = 'ep-view-mode-styles';
-  style.textContent = `
-    /* Botón flotante de cambio de vista */
-    #ep-view-toggle {
-      position: fixed;
-      top: 80px;
-      right: 16px;
-      z-index: 99999;
-      width: 44px;
-      height: 44px;
-      border-radius: 8px;
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      color: #374151;
-      transition: all 0.2s ease;
-    }
-    #ep-view-toggle:hover {
-      background: #f3f4f6;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
-      transform: scale(1.05);
-    }
-    #ep-view-toggle:active {
-      transform: scale(0.95);
-    }
-    .ep-filtered-hidden {
-      display: none !important;
-    }
-    .ep-hidden-home-section {
-      display: none !important;
-    }
-    /* Responsive para pantallas pequeñas */
-    @media (max-width: 768px) {
-      #ep-view-toggle {
-        top: auto;
-        bottom: 16px;
-        right: 16px;
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
-      }
-    }
-    @media (max-width: 480px) {
-      #ep-view-toggle {
-        bottom: 12px;
-        right: 12px;
-        width: 36px;
-        height: 36px;
-        font-size: 16px;
-      }
-    }
-
-    /* Override del grid de Bootstrap para reacomodar cards automáticamente */
-    .todas-convocatorias {
-      display: grid !important;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
-      gap: 16px !important;
-      width: 100% !important;
-      max-width: none !important;
-    }
-    .todas-convocatorias .items,
-    .todas-convocatorias .items.col-md-4,
-    .todas-convocatorias .items.col-lg-4 {
-      width: 100% !important;
-      max-width: none !important;
-      flex: 0 0 100% !important;
-      flex-basis: 100% !important;
-      float: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      box-sizing: border-box !important;
-      clear: both !important;
-    }
-    .todas-convocatorias .items .item {
-      height: 100% !important;
-      box-sizing: border-box !important;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-card-actions {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      align-items: stretch;
-      width: 100%;
-      max-width: 380px;
-      margin-top: 8px;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-wrapper {
-      display: contents;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-action-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      min-height: 36px;
-      width: 100%;
-      padding: 7px 10px;
-      border: 1px solid #dbeafe;
-      border-radius: 6px;
-      background: #eff6ff;
-      color: #0f4c81;
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1;
-      cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-action-button:hover {
-      background: #dbeafe;
-      border-color: #93c5fd;
-      color: #063b67;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-action-button:active {
-      transform: scale(0.98);
-    }
-    .todas-convocatorias .items .item .card-footer .ep-copy-link-button--copied {
-      background: #ecfdf5;
-      border-color: #6ee7b7;
-      color: #047857;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-action-icon {
-      width: 18px;
-      height: 18px;
-      flex: 0 0 18px;
-      stroke: currentColor;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      fill: none;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-google-calendar-button,
-    .todas-convocatorias .items .item .card-footer .ep-calendarization-button {
-      white-space: normal;
-      text-align: center;
-      line-height: 1.2;
-    }
-    .todas-convocatorias .items .item .card-footer .ep-google-calendar-button {
-      grid-column: 1 / -1;
-    }
-
-    /* Modo lista: override del grid de Bootstrap */
-    .todas-convocatorias.ep-list-mode {
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 6px !important;
-      width: 100% !important;
-      max-width: none !important;
-      grid-template-columns: none !important;
-    }
-    .todas-convocatorias.ep-list-mode .items,
-    .todas-convocatorias.ep-list-mode .items.col-md-4,
-    .todas-convocatorias.ep-list-mode .items.col-lg-4 {
-      width: 100% !important;
-      max-width: none !important;
-      flex: 0 0 100% !important;
-      flex-basis: 100% !important;
-      float: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      box-sizing: border-box !important;
-      clear: both !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item {
-      padding: 12px 16px !important;
-      background: #ffffff !important;
-      border: 1px solid #e5e7eb !important;
-      border-radius: 6px !important;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-      width: 100% !important;
-      box-sizing: border-box !important;
-    }
-    .todas-convocatorias.ep-list-mode .items.ep-keyboard-selected .item {
-      border-color: #2563eb !important;
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
-    }
-    /* Fecha arriba */
-    .todas-convocatorias.ep-list-mode .items .item .top .label-estado {
-      font-size: 11px !important;
-      padding: 2px 8px !important;
-      display: inline-block !important;
-      margin-bottom: 6px !important;
-    }
-    /* Título */
-    .todas-convocatorias.ep-list-mode .items .item .top h3 {
-      margin: 0 0 4px 0 !important;
-      font-size: 15px !important;
-      line-height: 1.4 !important;
-      font-weight: 600 !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .top h3 a {
-      color: #1a1a1a !important;
-      text-decoration: none !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .top h3 a:hover {
-      color: #2563eb !important;
-      text-decoration: underline !important;
-    }
-    /* Lugar de trabajo */
-    .todas-convocatorias.ep-list-mode .items .item .top > p {
-      margin: 0 0 8px 0 !important;
-      font-size: 13px !important;
-      color: #6b7280 !important;
-    }
-    /* Separador */
-    .todas-convocatorias.ep-list-mode .items .item hr {
-      margin: 8px 0 !important;
-      border-color: #f3f4f6 !important;
-    }
-    /* Ministerio, región y calendarización en una sola fila */
-    .todas-convocatorias.ep-list-mode .items .item .cnt {
-      display: flex !important;
-      flex-direction: row !important;
-      align-items: center !important;
-      gap: 4px !important;
-      font-size: 13px !important;
-      color: #4b5563 !important;
-      flex-wrap: wrap !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .cnt p {
-      margin: 0 !important;
-      display: inline !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .cnt p:first-child::after {
-      content: "·" !important;
-      margin: 0 6px !important;
-      color: #d1d5db !important;
-    }
-    /* Footer: solo calendarización, en línea con el texto */
-    .todas-convocatorias.ep-list-mode .items .item .card-footer {
-      display: inline-flex !important;
-      flex-direction: row !important;
-      align-items: center !important;
-      gap: 0 !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-card-actions {
-      display: inline-flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      width: auto !important;
-      max-width: none !important;
-      margin-top: 0 !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer > div {
-      display: contents !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-action-button,
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-google-calendar-button {
-      font-size: 12px !important;
-      padding: 2px 8px !important;
-      margin: 0 !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 4px !important;
-      width: auto !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-calendarization-button::before,
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-google-calendar-button::before {
-      content: "·" !important;
-      margin: 0 6px 0 0 !important;
-      color: #d1d5db !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-copy-link-wrapper {
-      display: inline-flex !important;
-      margin-left: 8px !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .item .card-footer .ep-copy-link-button {
-      min-height: 28px !important;
-      padding: 4px 8px !important;
-      font-size: 12px !important;
-    }
-    /* Ocultar contenido vacío del footer */
-    .todas-convocatorias.ep-list-mode .items .item .card-footer-contenido {
-      display: none !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .box {
-      display: none !important;
-    }
-    .todas-convocatorias.ep-list-mode .items .alert {
-      margin: 6px 0 0 0 !important;
-      font-size: 12px !important;
-      padding: 4px 10px !important;
-      display: inline-block !important;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-// Crear botón flotante de cambio de vista
-function createViewToggleButton() {
-  if (document.getElementById('ep-view-toggle')) return;
-
-  const button = document.createElement('button');
-  button.id = 'ep-view-toggle';
-  button.setAttribute('aria-label', 'Cambiar entre vista de grilla y lista');
-
-  // Determinar icono según modo actual
-  const isListMode = document.querySelector('.todas-convocatorias')?.classList.contains('ep-list-mode');
-  button.textContent = isListMode ? '☰' : '⊞';
-  updateViewToggleTooltip(button, isListMode);
-
-  button.addEventListener('click', () => {
-    const container = document.querySelector('.todas-convocatorias');
-    if (!container) return;
-
-    const isCurrentlyList = container.classList.contains('ep-list-mode');
-
-    if (isCurrentlyList) {
-      container.classList.remove('ep-list-mode');
-      clearSelectedListItem();
-      button.textContent = '⊞';
-      updateViewToggleTooltip(button, false);
-      chrome.storage.local.set({ viewMode: 'grid' });
-    } else {
-      container.classList.add('ep-list-mode');
-      button.textContent = '☰';
-      updateViewToggleTooltip(button, true);
-      chrome.storage.local.set({ viewMode: 'list' });
-      clampSelectedListItem();
-    }
-  });
-
-  document.body.appendChild(button);
-}
-
-function updateViewToggleTooltip(button, isListMode) {
-  button.title = isListMode
-    ? 'Vista actual: Lista. Clic para cambiar a Grilla'
-    : 'Vista actual: Grilla. Clic para cambiar a Lista';
-}
-
-// Aplicar modo de vista guardado
-function applySavedViewMode() {
-  chrome.storage.local.get(['viewMode'], (result) => {
-    const viewMode = result.viewMode || 'grid';
-    const container = document.querySelector('.todas-convocatorias');
-    const button = document.getElementById('ep-view-toggle');
-
-    if (!container || !button) return;
-
-    if (viewMode === 'list') {
-      container.classList.add('ep-list-mode');
-      button.textContent = '☰';
-      updateViewToggleTooltip(button, true);
-    } else {
-      container.classList.remove('ep-list-mode');
-      clearSelectedListItem();
-      button.textContent = '⊞';
-      updateViewToggleTooltip(button, false);
-    }
-  });
-}
-
-function setupKeyboardNavigation() {
-  if (document.body.dataset.epKeyboardNavigationReady === 'true') return;
-  document.body.dataset.epKeyboardNavigationReady = 'true';
-
-  document.addEventListener('keydown', (event) => {
-    if (shouldIgnoreKeyboardShortcut(event)) return;
-
-    const key = event.key.toLowerCase();
-    if (key !== 'j' && key !== 'k' && key !== 'enter') return;
-
-    const container = document.querySelector('.todas-convocatorias');
-    if (!container?.classList.contains('ep-list-mode')) return;
-
-    if (key === 'enter') {
-      const selected = getVisibleJobElements()[selectedListIndex];
-      if (!selected) return;
-
-      const link = selected.querySelector('.top h3 a[href], h3 a[href], a[href*="convocatorias"][href], a[href*="postular"][href]');
-      if (!link) return;
-
-      event.preventDefault();
-      link.click();
-      return;
-    }
-
-    event.preventDefault();
-    moveListSelection(key === 'j' ? 1 : -1);
-  });
-}
-
-function shouldIgnoreKeyboardShortcut(event) {
-  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return true;
-
-  const target = event.target;
-  if (!target) return false;
-
-  const tagName = target.tagName?.toLowerCase();
-  return (
-    target.isContentEditable ||
-    tagName === 'input' ||
-    tagName === 'textarea' ||
-    tagName === 'select' ||
-    tagName === 'button'
-  );
-}
-
-function moveListSelection(direction) {
-  const visibleJobs = getVisibleJobElements();
-  if (visibleJobs.length === 0) {
-    clearSelectedListItem();
-    return;
-  }
-
-  const nextIndex = selectedListIndex < 0
-    ? (direction > 0 ? 0 : visibleJobs.length - 1)
-    : Math.max(0, Math.min(visibleJobs.length - 1, selectedListIndex + direction));
-
-  selectListItem(nextIndex, visibleJobs);
-}
-
-function selectListItem(index, visibleJobs = getVisibleJobElements()) {
-  clearSelectedListItem();
-
-  const element = visibleJobs[index];
-  if (!element) {
-    selectedListIndex = -1;
-    return;
-  }
-
-  selectedListIndex = index;
-  element.classList.add('ep-keyboard-selected');
-  element.setAttribute('tabindex', '-1');
-  element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-}
-
-function clearSelectedListItem() {
-  document.querySelectorAll('.ep-keyboard-selected').forEach((element) => {
-    element.classList.remove('ep-keyboard-selected');
-    element.removeAttribute('tabindex');
-  });
-  selectedListIndex = -1;
-}
-
-function clampSelectedListItem() {
-  const container = document.querySelector('.todas-convocatorias');
-  if (!container?.classList.contains('ep-list-mode')) {
-    clearSelectedListItem();
-    return;
-  }
-
-  const visibleJobs = getVisibleJobElements();
-  if (visibleJobs.length === 0) {
-    clearSelectedListItem();
-    return;
-  }
-
-  if (selectedListIndex >= visibleJobs.length) {
-    selectedListIndex = visibleJobs.length - 1;
-  }
-
-  if (selectedListIndex >= 0) {
-    selectListItem(selectedListIndex, visibleJobs);
-  }
-}
-
-// Inicializar modo de vista
-function initViewMode() {
-  injectViewModeStyles();
-  hideEmpleosStatsSection();
-  setupStatsSectionHider();
-  // El botón y la aplicación del modo se manejan en initializeWhenReady()
-  // para evitar duplicación con el observer
-}
-
-// ===== INICIALIZACIÓN =====
-initViewMode();
-
-log('Content script cargado');
-
-  })(); // Fin del IIFE
-} // Fin del else - cierre del guard clause
